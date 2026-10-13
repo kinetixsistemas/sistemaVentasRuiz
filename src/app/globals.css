@@ -1,0 +1,187 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens del sistema "Apple-style Mobile ERP".
+ *
+ * Dirección: lenguaje de las apps de Apple (Salud, Wallet, Ajustes), no de
+ * apple.com. Superficies claras, tipografía del sistema (SF Pro en Apple),
+ * jerarquía por peso/opacidad, separadores hairline, translucidez con blur y
+ * sombras en capas. Una sola estrategia de profundidad: hairline + sombra sutil.
+ *
+ * Consulta .interface-design/system.md antes de cambiar un token.
+ */
+@theme {
+  /* Fuente: stack del sistema. En iPhone/Mac renderiza SF Pro nativo. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Superficies (Apple system) */
+  --color-background: #f5f5f7;
+  --color-on-background: #1d1d1f;
+  --color-surface: #ffffff;
+  --color-on-surface: #1d1d1f;
+  --color-on-surface-variant: #6e6e73;
+  /* Placeholder: un poco más oscuro que on-surface-variant para cumplir
+     WCAG AA (4.68:1) sobre el relleno de los campos (surface-container). */
+  --color-placeholder: #6a6a70;
+  --color-surface-container-lowest: #ffffff;
+  /* Sidebar comparte el canvas (skill: no partir la pantalla en dos mundos). */
+  --color-surface-container-low: #f5f5f7;
+  --color-surface-container: #efeff2;
+  --color-surface-container-high: #e8e8ed;
+
+  /* Primario (iOS blue) */
+  --color-primary: #0071e3;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #0071e3;
+  --color-on-primary-container: #ffffff;
+
+  /* Secundario */
+  --color-secondary-container: #d6e8ff;
+  --color-on-secondary-container: #0a5bbf;
+
+  /* Terciario (Apple orange) */
+  --color-tertiary-container: #fff1e6;
+  --color-on-tertiary-container: #9a3412;
+
+  /* Error (Apple red) */
+  --color-error: #e0241c;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffe5e3;
+  --color-on-error-container: #b3261e;
+
+  /* Contorno */
+  --color-outline: #c7c7cc;
+  --color-outline-variant: #e5e5ea;
+
+  /* Inverso */
+  --color-inverse-surface: #1d1d1f;
+  --color-inverse-on-surface: #f5f5f7;
+
+  /* Estado de factura: fondos y textos semánticos.
+     "Por vencer" corregido a #b45309 para cumplir WCAG AA (4.65:1). */
+  --color-status-pagada-bg: #e3f9e5;
+  --color-status-pagada-text: #1b7f3b;
+  --color-status-por-vencer-bg: #fff4e0;
+  --color-status-por-vencer-text: #b45309;
+  --color-status-vencida-bg: #ffe5e3;
+  --color-status-vencida-text: #b3261e;
+  --color-status-pendiente-bg: #efeff2;
+  --color-status-pendiente-text: #6e6e73;
+
+  /* Radios (Apple: generosos y consistentes) */
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+  --radius-full: 9999px;
+
+  /* Tipografía (ratio ~1.25, weight + opacity como palancas de jerarquía) */
+  --text-headline-lg: 32px;
+  --text-headline-lg--line-height: 38px;
+  --text-headline-lg--font-weight: 700;
+  --text-headline-lg--letter-spacing: -0.02em;
+  --text-headline-lg-mobile: 28px;
+  --text-headline-lg-mobile--line-height: 34px;
+  --text-headline-lg-mobile--font-weight: 700;
+  --text-headline-lg-mobile--letter-spacing: -0.02em;
+  --text-headline-md: 22px;
+  --text-headline-md--line-height: 28px;
+  --text-headline-md--font-weight: 600;
+  --text-headline-md--letter-spacing: -0.01em;
+  --text-headline-sm: 17px;
+  --text-headline-sm--line-height: 22px;
+  --text-headline-sm--font-weight: 600;
+  --text-headline-sm--letter-spacing: -0.01em;
+  --text-body-lg: 17px;
+  --text-body-lg--line-height: 25px;
+  --text-body-lg--font-weight: 400;
+  --text-body-md: 15px;
+  --text-body-md--line-height: 21px;
+  --text-body-md--font-weight: 400;
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 18px;
+  --text-body-sm--font-weight: 400;
+  --text-label-lg: 15px;
+  --text-label-lg--line-height: 20px;
+  --text-label-lg--font-weight: 600;
+  --text-label-md: 13px;
+  --text-label-md--line-height: 16px;
+  --text-label-md--font-weight: 600;
+  --text-label-sm: 11px;
+  --text-label-sm--line-height: 14px;
+  --text-label-sm--font-weight: 500;
+  --text-numeric-currency: 20px;
+  --text-numeric-currency--line-height: 26px;
+  --text-numeric-currency--font-weight: 700;
+
+  /* Profundidad: una sola estrategia (hairline + sombra en capas). */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.04),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-overlay: 0 12px 40px rgba(0, 0, 0, 0.16);
+
+  /* Movimiento: rápido, con ease-out custom. */
+  --animate-fade-in: fade-in 0.2s cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-slide-up: slide-up 0.35s cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-slide-down: slide-down 0.22s cubic-bezier(0.23, 1, 0.32, 1) both;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-background text-on-background font-sans antialiased;
+    color-scheme: light;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  /* Respeta la preferencia del sistema: conserva opacidad, elimina movimiento. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

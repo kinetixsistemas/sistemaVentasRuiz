@@ -25,8 +25,20 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
+ * Pila de modales abiertos (puede haber modales anidados): solo el superior
+ * responde a Escape/Tab. Es a nivel de módulo porque cada modal es un
+ * componente independiente.
+ */
+const pilaModales: number[] = [];
+let contadorModales = 0;
+
+/**
  * Modal responsivo: hoja inferior (bottom sheet) en móvil y modal centrado en
  * escritorio. Atrapa el foco y lo devuelve al elemento que lo abrió.
+ *
+ * Importante: el efecto NO depende de `onClose` (los padres suelen pasar una
+ * función nueva en cada render); si dependiera, cada tecla escrita en un campo
+ * re-ejecutaría la limpieza y robaría el foco del input.
  */
 export function Modal({
   open,
@@ -39,18 +51,30 @@ export function Modal({
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const idRef = useRef<number | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;
+    if (idRef.current === null) idRef.current = ++contadorModales;
+    const id = idRef.current;
+    pilaModales.push(id);
+    const esSuperior = () => pilaModales[pilaModales.length - 1] === id;
+
     const opener = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     const handleKey = (e: KeyboardEvent) => {
+      if (!esSuperior()) return;
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !panel) return;
@@ -75,17 +99,22 @@ export function Modal({
 
     document.addEventListener("keydown", handleKey);
     const focusTimer = window.setTimeout(() => {
-      const first = panel?.querySelector<HTMLElement>(FOCUSABLE);
+      if (!panel) return;
+      // No robar el foco si el usuario ya está interactuando dentro del panel.
+      if (panel.contains(document.activeElement)) return;
+      const first = panel.querySelector<HTMLElement>(FOCUSABLE);
       (first ?? panel)?.focus();
     }, 0);
 
     return () => {
+      const indice = pilaModales.indexOf(id);
+      if (indice >= 0) pilaModales.splice(indice, 1);
       document.removeEventListener("keydown", handleKey);
       window.clearTimeout(focusTimer);
       document.body.style.overflow = prevOverflow;
       opener?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -101,3 +101,21 @@ export async function actualizarUsuarioAuthRepo(input: {
   });
   if (error) throw error;
 }
+
+/** Cuenta los administradores para no dejar el sistema sin ninguno. */
+export async function contarAdminsRepo(): Promise<number> {
+  const supabase = await createSupabaseServerClient();
+  const { count, error } = await supabase
+    .from("perfiles")
+    .select("id", { count: "exact", head: true })
+    .eq("rol", "admin");
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Elimina el usuario de Auth; el perfil cae por ON DELETE CASCADE. */
+export async function eliminarUsuarioAuthRepo(id: string): Promise<void> {
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase.auth.admin.deleteUser(id);
+  if (error) throw error;
+}

@@ -1,16 +1,18 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
-import { crearFactura, listarFacturas, obtenerFactura } from "@/features/ventas/actions";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { crearFactura, listarFacturas, resumenVentas } from "@/features/ventas/actions";
 import type { Cliente } from "@/features/clientes/schemas";
 import type { Producto } from "@/features/inventario/schemas";
-import type { FacturaConSaldo, FacturaDetalle, ResumenCartera } from "@/features/ventas/schemas";
+import type { FacturaConSaldo, ResumenCartera, ResumenVentas } from "@/features/ventas/schemas";
+import type { EstadoFactura } from "@/types/database";
 import { calcularTotal } from "@/features/ventas/schemas";
+import { round2 } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
-import { EstadoChip } from "@/components/ui/estado-chip";
+import { EstadoChip, estadoFacturaLabel } from "@/components/ui/estado-chip";
 import { Icon } from "@/components/ui/icon";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
@@ -20,9 +22,13 @@ import { Select, type SelectOption } from "@/components/ui/select";
 import { StatCard } from "@/components/ui/stat-card";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/components/ui/cn";
-import { formatFecha, formatUsd, labelCondicion, labelMetodoPago } from "@/components/ui/format";
+import { formatFecha, formatUsd, labelCondicion } from "@/components/ui/format";
+import { FacturaDetalleModal } from "./factura-detalle-modal";
 
 type ItemForm = { producto_id: string; cantidad: string; precio: string; stock: number };
+type FiltroEstado = EstadoFactura | "todas";
+type Periodo = { desde: string; hasta: string };
+type DescuentoCampo = { monto: string; pct: string; fuente: "monto" | "pct" };
 
 const ITEM_VACIO: ItemForm = { producto_id: "", cantidad: "1", precio: "", stock: 0 };
 
@@ -32,12 +38,56 @@ const DIAS_CREDITO_OPCIONES: SelectOption[] = [
   { value: "30", label: "30 días" },
 ];
 
+const FILTROS_ESTADO: { value: FiltroEstado; label: string }[] = [
+  { value: "todas", label: "Todas" },
+  { value: "pendiente", label: estadoFacturaLabel.pendiente },
+  { value: "por_vencer", label: estadoFacturaLabel.por_vencer },
+  { value: "vencida", label: estadoFacturaLabel.vencida },
+  { value: "pagada", label: estadoFacturaLabel.pagada },
+];
+
+/** Normaliza un texto numérico aceptando coma o punto decimal. */
+function numeroDeTexto(valor: string): number {
+  const n = Number(valor.replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Mes anterior/siguiente a partir del primer día del período. */
+function moverPeriodo(periodo: Periodo, delta: number): Periodo {
+  const [anio, mes] = periodo.desde.split("-").map(Number);
+  let nuevoAnio = anio!;
+  let nuevoMes = mes! + delta;
+  if (nuevoMes < 1) {
+    nuevoMes = 12;
+    nuevoAnio -= 1;
+  }
+  if (nuevoMes > 12) {
+    nuevoMes = 1;
+    nuevoAnio += 1;
+  }
+  const mm = String(nuevoMes).padStart(2, "0");
+  const ultimoDia = new Date(nuevoAnio, nuevoMes, 0).getDate();
+  return { desde: `${nuevoAnio}-${mm}-01`, hasta: `${nuevoAnio}-${mm}-${String(ultimoDia).padStart(2, "0")}` };
+}
+
+/** Etiqueta legible del período, p. ej. "Octubre 2026". */
+function etiquetaPeriodo(periodo: Periodo): string {
+  const [anio, mes] = periodo.desde.split("-").map(Number);
+  const texto = new Intl.DateTimeFormat("es-VE", { month: "long", year: "numeric" }).format(
+    new Date(anio!, mes! - 1, 1)
+  );
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
 export function VentasApp({
   facturas,
   resumen,
   clientes,
   productos,
   abrirNueva = false,
+  periodoInicial,
+  periodoActual,
+  resumenVentasInicial,
   errorMensaje,
 }: {
   facturas: FacturaConSaldo[];
@@ -46,24 +96,33 @@ export function VentasApp({
   productos: Producto[];
   /** Abre el modal de nueva venta al cargar (deep-link `/ventas?nueva=1`). */
   abrirNueva?: boolean;
+  /** Mes mostrado en los KPIs (por defecto, el mes actual). */
+  periodoInicial: Periodo;
+  /** Mes actual según el servidor: limita la navegación a meses pasados. */
+  periodoActual: Periodo;
+  resumenVentasInicial?: ResumenVentas | null;
   errorMensaje?: string;
 }) {
   const toast = useToast();
 
   const [facturasLocales, setFacturasLocales] = useState<FacturaConSaldo[]>(facturas);
   const [busqueda, setBusqueda] = useState("");
+  const [estadoFiltro, setEstadoFiltro] = useState<FiltroEstado>("todas");
   const [buscando, startBuscar] = useTransition();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [modalNueva, setModalNueva] = useState(abrirNueva);
   const [detalle, setDetalle] = useState<FacturaConSaldo | null>(null);
-  const [detalleCargando, setDetalleCargando] = useState(false);
-  const [detalleData, setDetalleData] = useState<FacturaDetalle | null>(null);
+
+  const [periodo, setPeriodo] = useState<Periodo>(periodoInicial);
+  const [resumenMes, setResumenMes] = useState<ResumenVentas | null>(resumenVentasInicial ?? null);
+  const [cambiandoMes, startCambiarMes] = useTransition();
 
   const [clienteId, setClienteId] = useState("");
   const [numeroFactura, setNumeroFactura] = useState("");
   const [condicion, setCondicion] = useState<"contado" | "credito">("contado");
   const [diasCredito, setDiasCredito] = useState("7");
   const [items, setItems] = useState<ItemForm[]>([ITEM_VACIO]);
+  const [descuento, setDescuento] = useState<DescuentoCampo>({ monto: "", pct: "", fuente: "monto" });
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, startGuardar] = useTransition();
 
@@ -73,26 +132,86 @@ export function VentasApp({
     label: `${p.codigo} — ${p.nombre}`,
   }));
 
-  // La búsqueda se resuelve en la BD (no se descarga el histórico completo).
-  function cambiarBusqueda(valor: string) {
-    setBusqueda(valor);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      startBuscar(async () => {
-        const res = await listarFacturas({
-          estado: "todas",
-          limite: 50,
-          busqueda: valor.trim() || undefined,
-        });
-        if (res.ok) setFacturasLocales(res.data);
-        else toast.error(res.error.message);
-      });
-    }, 300);
-  }
+  const subtotal = calcularTotal(
+    items.map((i) => ({
+      cantidad: Number(i.cantidad) || 0,
+      precio_unitario_usd: Number(i.precio) || 0,
+    }))
+  );
+
+  // Descuento espejo: lo que el usuario escribe manda; el otro campo se deriva
+  // del subtotal actual, así que se mantiene coherente si cambian los ítems.
+  const descuentoVista = useMemo(() => {
+    if (descuento.fuente === "pct") {
+      const pct = numeroDeTexto(descuento.pct);
+      return {
+        pct: descuento.pct,
+        monto: descuento.pct.trim() === "" ? "" : String(round2((subtotal * pct) / 100)),
+      };
+    }
+    const monto = numeroDeTexto(descuento.monto);
+    return {
+      monto: descuento.monto,
+      pct:
+        subtotal > 0 && descuento.monto.trim() !== ""
+          ? String(round2((monto / subtotal) * 100))
+          : "",
+    };
+  }, [descuento, subtotal]);
+
+  const descuentoMonto = numeroDeTexto(descuentoVista.monto);
+  const descuentoExcede = descuentoMonto > subtotal + 0.005;
+  const totalEstimado = round2(Math.max(0, subtotal - descuentoMonto));
 
   const totalFacturasPendiente = facturasLocales.reduce((acc, f) => acc + f.saldo_usd, 0);
   const facturasAbiertas = resumen?.facturas_abiertas ?? facturasLocales.filter((f) => f.saldo_usd > 0).length;
   const porCobrar = resumen ? resumen.por_cobrar_usd : totalFacturasPendiente;
+  const filtrando = estadoFiltro !== "todas" || busqueda.trim() !== "";
+  const esMesActual = periodo.desde === periodoActual.desde;
+
+  function consultar(estado: FiltroEstado, texto: string) {
+    startBuscar(async () => {
+      const res = await listarFacturas({
+        estado,
+        limite: 50,
+        busqueda: texto.trim() || undefined,
+      });
+      if (res.ok) setFacturasLocales(res.data);
+      else toast.error(res.error.message);
+    });
+  }
+
+  // La búsqueda se resuelve en la BD (no se descarga el histórico completo).
+  function cambiarBusqueda(valor: string) {
+    setBusqueda(valor);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => consultar(estadoFiltro, valor), 300);
+  }
+
+  function cambiarFiltroEstado(nuevo: FiltroEstado) {
+    if (nuevo === estadoFiltro) return;
+    setEstadoFiltro(nuevo);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    consultar(nuevo, busqueda);
+  }
+
+  function limpiarFiltros() {
+    setBusqueda("");
+    setEstadoFiltro("todas");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    consultar("todas", "");
+  }
+
+  function cambiarMes(delta: number) {
+    const nuevo = moverPeriodo(periodo, delta);
+    if (nuevo.desde > periodoActual.desde) return;
+    setPeriodo(nuevo);
+    startCambiarMes(async () => {
+      const res = await resumenVentas(nuevo);
+      if (res.ok) setResumenMes(res.data);
+      else toast.error(res.error.message);
+    });
+  }
 
   function seleccionarProducto(idx: number, productoId: string) {
     const producto = productos.find((p) => p.id === productoId);
@@ -109,15 +228,6 @@ export function VentasApp({
     setItems((prev) => prev.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
   }
 
-  function totalItems(): number {
-    return calcularTotal(
-      items.map((i) => ({
-        cantidad: Number(i.cantidad) || 0,
-        precio_unitario_usd: Number(i.precio) || 0,
-      }))
-    );
-  }
-
   function agregarItem() {
     setItems((prev) => [...prev, { ...ITEM_VACIO }]);
   }
@@ -131,6 +241,7 @@ export function VentasApp({
         numero_factura: numeroFactura,
         condicion,
         dias_credito: condicion === "contado" ? 0 : Number(diasCredito),
+        descuento_usd: descuentoMonto,
         items: items
           .filter((i) => i.producto_id && Number(i.cantidad) > 0)
           .map((i) => ({
@@ -151,6 +262,7 @@ export function VentasApp({
       setCondicion("contado");
       setDiasCredito("7");
       setItems([ITEM_VACIO]);
+      setDescuento({ monto: "", pct: "", fuente: "monto" });
       toast.success("Factura creada y stock descontado");
 
       // La factura recién creada es la más reciente: se antepone a la lista
@@ -161,12 +273,6 @@ export function VentasApp({
 
   function abrirDetalle(factura: FacturaConSaldo) {
     setDetalle(factura);
-    setDetalleData(null);
-    setDetalleCargando(true);
-    void obtenerFactura(factura.id).then((res) => {
-      setDetalleCargando(false);
-      if (res.ok) setDetalleData(res.data);
-    });
   }
 
   return (
@@ -185,6 +291,29 @@ export function VentasApp({
 
       {errorMensaje && <Alert tone="error">{errorMensaje}</Alert>}
 
+      <div
+        role="group"
+        aria-label="Filtrar por estado"
+        className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5"
+      >
+        {FILTROS_ESTADO.map((filtro) => (
+          <button
+            key={filtro.value}
+            type="button"
+            onClick={() => cambiarFiltroEstado(filtro.value)}
+            aria-pressed={estadoFiltro === filtro.value}
+            className={cn(
+              "h-9 shrink-0 rounded-full px-3.5 text-label-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+              estadoFiltro === filtro.value
+                ? "bg-primary text-on-primary"
+                : "bg-surface-container text-on-surface-variant hover:text-on-surface"
+            )}
+          >
+            {filtro.label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <StatCard
           compact
@@ -202,14 +331,66 @@ export function VentasApp({
         />
       </div>
 
+      <section className="flex flex-col gap-3" aria-label="Ventas del mes">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-label-lg text-on-surface-variant">Ventas del mes</h2>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => cambiarMes(-1)}
+              aria-label="Mes anterior"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              <Icon name="chevron_left" size={20} />
+            </button>
+            <span className="min-w-32 text-center text-label-md text-on-surface">{etiquetaPeriodo(periodo)}</span>
+            <button
+              type="button"
+              onClick={() => cambiarMes(1)}
+              disabled={esMesActual}
+              aria-label="Mes siguiente"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              <Icon name="chevron_right" size={20} />
+            </button>
+          </div>
+        </div>
+        <div className={cn("grid grid-cols-2 gap-3 transition-opacity", cambiandoMes && "opacity-60")}>
+          <StatCard
+            compact
+            label="Vendido"
+            value={resumenMes ? formatUsd(resumenMes.total_vendido_usd) : "—"}
+            icon="receipt_long"
+            tone="bg-primary/10 text-primary"
+          />
+          <StatCard
+            compact
+            label="Recaudado"
+            value={resumenMes ? formatUsd(resumenMes.total_recaudado_usd) : "—"}
+            icon="payments"
+            tone="bg-status-pagada-bg text-status-pagada-text"
+          />
+        </div>
+      </section>
+
       {buscando ? (
         <p className="py-6 text-center text-body-sm text-on-surface-variant">Buscando…</p>
       ) : facturasLocales.length === 0 ? (
         <EmptyState
           icon="receipt_long"
-          title={busqueda ? "Sin resultados" : "Sin facturas"}
-          description={busqueda ? `No hay facturas que coincidan con “${busqueda}”.` : "Registra tu primera venta para empezar a facturar."}
-          action={!busqueda ? <Button onClick={() => setModalNueva(true)} icon="add">Nueva venta</Button> : <Button onClick={() => cambiarBusqueda("")} variant="secondary">Limpiar búsqueda</Button>}
+          title={filtrando ? "Sin resultados" : "Sin facturas"}
+          description={
+            filtrando
+              ? "No hay facturas que coincidan con los filtros."
+              : "Registra tu primera venta para empezar a facturar."
+          }
+          action={
+            filtrando ? (
+              <Button onClick={limpiarFiltros} variant="secondary">Limpiar filtros</Button>
+            ) : (
+              <Button onClick={() => setModalNueva(true)} icon="add">Nueva venta</Button>
+            )
+          }
         />
       ) : (
         <Card contentClassName="p-0">
@@ -220,9 +401,12 @@ export function VentasApp({
                   <Icon name="receipt_long" size={20} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-label-lg text-on-surface">
-                    <span className="tabular-nums">{factura.numero_factura}</span>
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="shrink-0 text-label-lg tabular-nums text-on-surface">
+                      {factura.numero_factura}
+                    </p>
+                    <EstadoChip estado={factura.estado} className="hidden sm:inline-flex" />
+                  </div>
                   <p className="truncate text-body-sm text-on-surface-variant">
                     {factura.nombre_juridico} · {formatFecha(factura.fecha_emision)} · {labelCondicion(factura.condicion)}
                     {factura.saldo_usd > 0 && (
@@ -230,7 +414,6 @@ export function VentasApp({
                     )}
                   </p>
                 </div>
-                <EstadoChip estado={factura.estado} className="hidden sm:inline-flex" />
                 {factura.saldo_usd > 0 && (
                   <Button
                     href={`/cobranza?pedido=${factura.id}`}
@@ -264,14 +447,24 @@ export function VentasApp({
         footer={
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="flex-1 text-label-md text-on-surface-variant">
-              Total estimado:{" "}
-              <span className="text-label-lg tabular-nums text-on-surface">{formatUsd(totalItems())}</span>
+              {descuentoMonto > 0 ? (
+                <>
+                  Subtotal <span className="tabular-nums">{formatUsd(subtotal)}</span> · Descuento{" "}
+                  <span className="tabular-nums">−{formatUsd(descuentoMonto)}</span> · Total{" "}
+                  <span className="text-label-lg tabular-nums text-on-surface">{formatUsd(totalEstimado)}</span>
+                </>
+              ) : (
+                <>
+                  Total estimado:{" "}
+                  <span className="text-label-lg tabular-nums text-on-surface">{formatUsd(totalEstimado)}</span>
+                </>
+              )}
             </div>
             <div className="flex gap-3">
               <Button variant="secondary" disabled={guardando} onClick={() => setModalNueva(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" form="form-factura" icon="save" loading={guardando}>
+              <Button type="submit" form="form-factura" icon="save" loading={guardando} disabled={descuentoExcede}>
                 Guardar factura
               </Button>
             </div>
@@ -343,23 +536,23 @@ export function VentasApp({
                     />
                     <Input
                       label={idx === 0 ? "Cant." : undefined}
-                      type="number"
-                      min={1}
-                      step={1}
+                      type="text"
                       inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="off"
                       value={item.cantidad}
-                      onChange={(e) => actualizarItem(idx, { cantidad: e.target.value })}
+                      onChange={(e) => actualizarItem(idx, { cantidad: e.target.value.replace(/\D/g, "") })}
                       aria-label="Cantidad"
                     />
                     <Input
                       label={idx === 0 ? "Precio $" : undefined}
-                      type="number"
-                      min={0}
-                      step="0.01"
+                      type="text"
                       inputMode="decimal"
+                      readOnly
                       value={item.precio}
-                      onChange={(e) => actualizarItem(idx, { precio: e.target.value })}
-                      aria-label="Precio en USD"
+                      error={errores[`items.${idx}.precio_unitario_usd`]}
+                      aria-label="Precio en USD (definido por el producto)"
+                      className="text-on-surface-variant"
                     />
                     <button
                       type="button"
@@ -387,97 +580,49 @@ export function VentasApp({
             </Button>
             {errores.items && <InlineAlert className="mt-2">{errores.items}</InlineAlert>}
           </fieldset>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Descuento ($)"
+              name="descuento_usd"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="0,00"
+              value={descuentoVista.monto}
+              onChange={(e) => setDescuento((d) => ({ ...d, monto: e.target.value.replace(/[^0-9.,]/g, ""), fuente: "monto" }))}
+              error={errores.descuento_usd}
+              aria-label="Descuento en dólares"
+            />
+            <Input
+              label="Descuento (%)"
+              name="descuento_pct"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="0"
+              value={descuentoVista.pct}
+              onChange={(e) => setDescuento((d) => ({ ...d, pct: e.target.value.replace(/[^0-9.,]/g, ""), fuente: "pct" }))}
+              aria-label="Descuento en porcentaje"
+            />
+          </div>
+          {descuentoExcede && (
+            <InlineAlert>El descuento no puede superar el subtotal de la factura.</InlineAlert>
+          )}
         </form>
       </Modal>
 
-      <Modal
-        open={detalle !== null}
+      <FacturaDetalleModal
+        factura={detalle}
         onClose={() => setDetalle(null)}
-        title={detalle ? `Factura ${detalle.numero_factura}` : ""}
-        size="md"
-      >
-        {detalle && (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="font-medium text-on-surface">{detalle.nombre_juridico}</p>
-                <p className="text-body-sm text-on-surface-variant tabular-nums">
-                  {detalle.rif} · Emitida {formatFecha(detalle.fecha_emision)}
-                </p>
-                {detalle.fecha_vencimiento && (
-                  <p className="text-body-sm text-on-surface-variant tabular-nums">
-                    Vence {formatFecha(detalle.fecha_vencimiento)}
-                  </p>
-                )}
-              </div>
-              <EstadoChip estado={detalle.estado} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Card contentClassName="flex flex-col gap-0.5 p-3">
-                <p className="text-label-md text-on-surface-variant">Total</p>
-                <p className="text-label-lg tabular-nums text-on-surface">{formatUsd(detalle.total_usd)}</p>
-              </Card>
-              <Card contentClassName="flex flex-col gap-0.5 p-3">
-                <p className="text-label-md text-on-surface-variant">Saldo</p>
-                <p className={cn("text-label-lg tabular-nums", detalle.saldo_usd > 0 ? "text-on-surface" : "text-status-pagada-text")}>
-                  {formatUsd(detalle.saldo_usd)}
-                </p>
-              </Card>
-            </div>
-
-            {detalleCargando ? (
-              <p className="py-6 text-center text-body-sm text-on-surface-variant">Cargando detalle…</p>
-            ) : detalleData ? (
-              <>
-                <div>
-                  <p className="mb-2 text-label-md text-on-surface-variant">Productos</p>
-                  <Card contentClassName="p-0">
-                    <ul className="divide-y divide-outline-variant">
-                      {detalleData.items.map((item) => (
-                        <li key={item.id} className="flex items-baseline justify-between gap-3 px-4 py-2.5">
-                          <span className="min-w-0 truncate text-body-md text-on-surface">
-                            {item.producto?.nombre ?? "—"}
-                            <span className="text-body-sm text-on-surface-variant"> · {item.cantidad} u.</span>
-                          </span>
-                          <span className="shrink-0 text-label-md tabular-nums text-on-surface">{formatUsd(item.subtotal_usd)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </Card>
-                </div>
-                {detalleData.pagos.length > 0 && (
-                  <div>
-                    <p className="mb-2 text-label-md text-on-surface-variant">Pagos</p>
-                    <Card contentClassName="p-0">
-                      <ul className="divide-y divide-outline-variant">
-                        {detalleData.pagos.map((pago) => (
-                          <li key={pago.id} className="flex items-baseline justify-between gap-3 px-4 py-2.5">
-                            <span className="min-w-0 truncate text-body-md text-on-surface">
-                              {formatFecha(pago.fecha)} · {labelMetodoPago(pago.metodo)}
-                            </span>
-                            <span className="shrink-0 text-label-md tabular-nums text-on-surface">{formatUsd(pago.monto_usd)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </Card>
-                  </div>
-                )}
-              </>
-            ) : null}
-
-            <a
-              href={`/api/estado-cuenta/${detalle.cliente_id}`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-11 items-center justify-center gap-2 rounded-lg bg-surface-container text-label-lg text-on-surface transition-colors hover:bg-surface-container-high focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            >
-              <Icon name="download" size={18} />
-              Estado de cuenta del cliente
-            </a>
-          </div>
-        )}
-      </Modal>
+        accion={
+          detalle && detalle.saldo_usd > 0 ? (
+            <Button href={`/cobranza?pedido=${detalle.id}`} icon="payments" className="w-full">
+              Registrar pago
+            </Button>
+          ) : undefined
+        }
+      />
     </div>
   );
 }

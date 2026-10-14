@@ -2,11 +2,12 @@
 
 import { updateTag } from "next/cache";
 import { requireUser } from "@/lib/auth";
-import { fromZodError, type ActionResult } from "@/lib/result";
+import { errorResult, fromZodError, type ActionResult } from "@/lib/result";
 import { TAG_USUARIOS } from "@/lib/tags";
 import {
   actualizarMiPerfilService,
   crearUsuarioService,
+  eliminarUsuarioService,
   listarUsuariosService,
 } from "./service";
 import { actualizarPerfilSchema, crearUsuarioSchema, type Perfil } from "./schemas";
@@ -34,4 +35,15 @@ export async function actualizarMiPerfil(input: unknown): Promise<ActionResult<P
 export async function listarUsuarios(): Promise<ActionResult<Perfil[]>> {
   await requireUser();
   return listarUsuariosService();
+}
+
+export async function eliminarUsuario(usuarioId: unknown): Promise<ActionResult<null>> {
+  const user = await requireUser();
+  if (typeof usuarioId !== "string" || !usuarioId.trim()) {
+    return errorResult("VALIDATION", "Falta el identificador del usuario.");
+  }
+
+  const result = await eliminarUsuarioService(user.id, usuarioId.trim());
+  if (result.ok) updateTag(TAG_USUARIOS);
+  return result;
 }

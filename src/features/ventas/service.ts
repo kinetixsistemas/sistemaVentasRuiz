@@ -4,6 +4,7 @@ import {
   obtenerFacturaConSaldoRepo,
   obtenerFacturaDetalleRepo,
   resumenCarteraRepo,
+  resumenVentasPeriodoRepo,
 } from "./repository";
 import {
   errorResult,
@@ -18,6 +19,8 @@ import type {
   FacturaDetalle,
   ListarFacturasInput,
   ResumenCartera,
+  ResumenVentas,
+  ResumenVentasInput,
 } from "./schemas";
 
 /** Crea la factura de forma atómica en la BD (valida stock y calcula total). */
@@ -48,6 +51,17 @@ export async function listarFacturasService(
 export async function resumenCarteraService(): Promise<ActionResult<ResumenCartera>> {
   try {
     const resumen = await resumenCarteraRepo();
+    return okResult(resumen);
+  } catch (error) {
+    return fromPostgresError(error);
+  }
+}
+
+export async function resumenVentasPeriodoService(
+  input: ResumenVentasInput
+): Promise<ActionResult<ResumenVentas>> {
+  try {
+    const resumen = await resumenVentasPeriodoRepo(input);
     return okResult(resumen);
   } catch (error) {
     return fromPostgresError(error);

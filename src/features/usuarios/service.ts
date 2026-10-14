@@ -1,12 +1,16 @@
 import {
   actualizarPerfilRepo,
   actualizarUsuarioAuthRepo,
+  contarAdminsRepo,
   crearUsuarioAuthRepo,
+  eliminarUsuarioAuthRepo,
   listarPerfilesRepo,
+  obtenerPerfilRepo,
   upsertPerfilAdminRepo,
 } from "./repository";
 import {
   errorResult,
+  esErrorNoEncontrado,
   fromPostgresError,
   okResult,
   type ActionResult,
@@ -75,6 +79,37 @@ export async function listarUsuariosService(): Promise<ActionResult<Perfil[]>> {
     const perfiles = await listarPerfilesRepo();
     return okResult(perfiles);
   } catch (error) {
+    return fromPostgresError(error);
+  }
+}
+
+/** Elimina un usuario con las guardas: no a sí mismo y no al último admin. */
+export async function eliminarUsuarioService(
+  usuarioActualId: string,
+  usuarioId: string
+): Promise<ActionResult<null>> {
+  if (usuarioActualId === usuarioId) {
+    return errorResult("USUARIO_PROPIO", "No puedes eliminar tu propio usuario.");
+  }
+
+  try {
+    const perfil = await obtenerPerfilRepo(usuarioId);
+    if (perfil.rol === "admin") {
+      const admins = await contarAdminsRepo();
+      if (admins <= 1) {
+        return errorResult(
+          "ULTIMO_ADMIN",
+          "No se puede eliminar al último administrador del sistema."
+        );
+      }
+    }
+
+    await eliminarUsuarioAuthRepo(usuarioId);
+    return okResult(null);
+  } catch (error) {
+    if (esErrorNoEncontrado(error)) {
+      return errorResult("NO_ENCONTRADO", "El usuario no existe.");
+    }
     return fromPostgresError(error);
   }
 }

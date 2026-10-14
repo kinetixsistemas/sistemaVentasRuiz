@@ -53,6 +53,15 @@ export const crearFacturaSchema = z
       "Los días de crédito son obligatorios",
       "Los días de crédito deben ser un número"
     ).pipe(z.number().int("Los días de crédito deben ser un número entero")),
+    descuento_usd: numeroRequerido(
+      "El descuento es obligatorio",
+      "El descuento debe ser un número"
+    ).pipe(
+      z
+        .number()
+        .min(0, "El descuento no puede ser negativo")
+        .refine((v) => montoConDosDecimales(v), "El descuento admite máximo 2 decimales")
+    ),
     items: z.array(itemFacturaSchema).min(1, "Agregue al menos un producto a la factura"),
   })
   .superRefine((factura, ctx) => {
@@ -68,6 +77,13 @@ export const crearFacturaSchema = z
         code: "custom",
         path: ["dias_credito"],
         message: "Los días de crédito deben ser 7, 15 o 30",
+      });
+    }
+    if (factura.descuento_usd > calcularTotal(factura.items)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["descuento_usd"],
+        message: "El descuento no puede superar el subtotal de la factura",
       });
     }
   });
@@ -87,6 +103,14 @@ export const obtenerFacturaSchema = z.object({
   id: z.string().uuid("Identificador de factura inválido"),
 });
 
+/** Período (inclusive) para los KPIs de ventas por mes. */
+export const resumenVentasSchema = z
+  .object({
+    desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+    hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
+  })
+  .refine((p) => p.desde <= p.hasta, "El período no es válido");
+
 /**
  * Calcula el total de una factura en USD (solo previsualización).
  * El total oficial SIEMPRE lo calcula la base de datos en la RPC `crear_factura`.
@@ -101,6 +125,7 @@ export function calcularTotal(
 export type CrearFacturaInput = z.infer<typeof crearFacturaSchema>;
 export type ListarFacturasInput = z.infer<typeof listarFacturasSchema>;
 export type ObtenerFacturaInput = z.infer<typeof obtenerFacturaSchema>;
+export type ResumenVentasInput = z.infer<typeof resumenVentasSchema>;
 
 /** Fila de la vista facturas_con_saldo (listados de ventas y cobranza). */
 export type FacturaConSaldo = {
@@ -150,6 +175,7 @@ export type FacturaDetalle = {
   dias_credito: number;
   fecha_vencimiento: string;
   total_usd: number;
+  descuento_usd: number;
   cliente: { id: string; rif: string; nombre_juridico: string };
   items: ItemFactura[];
   pagos: PagoFactura[];
@@ -163,4 +189,10 @@ export type ResumenCartera = {
   facturas_vencidas: number;
   por_vencer_usd: number;
   facturas_por_vencer: number;
+};
+
+/** KPIs de ventas de un período (RPC `resumen_ventas_periodo`). */
+export type ResumenVentas = {
+  total_vendido_usd: number;
+  total_recaudado_usd: number;
 };

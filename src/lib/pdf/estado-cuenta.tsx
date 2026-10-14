@@ -95,7 +95,12 @@ export function EstadoCuentaPDF({ estado }: { estado: EstadoCuenta }) {
         )}
 
         <Text style={estilos.titulo}>Estado de cuenta</Text>
-        <Text style={estilos.subtitulo}>Generado el {estado.generado_el}</Text>
+        <Text style={estilos.subtitulo}>
+          Generado el {estado.generado_el}
+          {estado.rango
+            ? ` · Facturas emitidas del ${estado.rango.desde} al ${estado.rango.hasta}`
+            : ""}
+        </Text>
 
         <View style={estilos.bloqueCliente}>
           <View style={estilos.filaCliente}>

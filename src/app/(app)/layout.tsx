@@ -54,7 +54,7 @@ export default async function AppLayout({
       </header>
 
       {/* Contenido */}
-      <main className="pb-[calc(4rem+env(safe-area-inset-bottom)+5rem)] lg:pb-10 lg:pl-[17rem] lg:pt-16">
+      <main className="pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-10 lg:pl-[17rem] lg:pt-16">
         <div className="mx-auto w-full max-w-6xl p-4 sm:p-6">
           {children}
         </div>
@@ -67,16 +67,6 @@ export default async function AppLayout({
         </div>
         <div className="h-[env(safe-area-inset-bottom)]" />
       </nav>
-
-      {/* Acción flotante "Nueva venta" (móvil) */}
-      <Link
-        href="/ventas?nueva=1"
-        aria-label="Nueva venta"
-        className="fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-overlay transition-transform active:scale-95 lg:hidden"
-        style={{ bottom: "calc(4.5rem + env(safe-area-inset-bottom))" }}
-      >
-        <Icon name="add" size={26} strokeWidth={2.2} />
-      </Link>
     </div>
   );
 }

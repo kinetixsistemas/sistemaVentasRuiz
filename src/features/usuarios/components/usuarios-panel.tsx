@@ -2,11 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { crearUsuario } from "../actions";
+import { crearUsuario, eliminarUsuario } from "../actions";
 import type { Perfil } from "../schemas";
 import type { RolUsuario } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Select } from "@/components/ui/select";
@@ -49,6 +51,10 @@ export function UsuariosPanel({
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [creando, startCrear] = useTransition();
 
+  const [eliminar, setEliminar] = useState<Perfil | null>(null);
+  const [eliminando, startEliminar] = useTransition();
+  const esUltimoAdmin = lista.filter((u) => u.rol === "admin").length <= 1;
+
   function abrir() {
     setForm({ nombre: "", correo: "", password: "", rol: "vendedor" });
     setErrores({});
@@ -68,6 +74,22 @@ export function UsuariosPanel({
       } else {
         setErrores(res.error.fieldErrors ?? {});
         toast.error(res.error.message);
+      }
+    });
+  }
+
+  function confirmarEliminar() {
+    if (!eliminar) return;
+    startEliminar(async () => {
+      const res = await eliminarUsuario(eliminar.id);
+      if (res.ok) {
+        toast.success("Usuario eliminado");
+        setLista((actual) => actual.filter((u) => u.id !== eliminar.id));
+        setEliminar(null);
+        router.refresh();
+      } else {
+        toast.error(res.error.message);
+        setEliminar(null);
       }
     });
   }
@@ -116,6 +138,22 @@ export function UsuariosPanel({
                 {formatFecha(usuario.created_at)}
               </span>
             </div>
+            {usuario.id !== miId && (
+              <button
+                type="button"
+                onClick={() => setEliminar(usuario)}
+                disabled={usuario.rol === "admin" && esUltimoAdmin}
+                aria-label={`Eliminar a ${usuario.nombre ?? usuario.correo ?? "usuario"}`}
+                title={
+                  usuario.rol === "admin" && esUltimoAdmin
+                    ? "No se puede eliminar al último administrador"
+                    : "Eliminar usuario"
+                }
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container hover:text-error disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+              >
+                <Icon name="delete" size={18} />
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -191,6 +229,17 @@ export function UsuariosPanel({
           />
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={eliminar !== null}
+        onClose={() => setEliminar(null)}
+        onConfirm={confirmarEliminar}
+        title="¿Eliminar usuario?"
+        description={`“${eliminar?.nombre ?? eliminar?.correo ?? ""}” perderá el acceso al sistema. Sus facturas y cobros se conservan.`}
+        confirmLabel="Eliminar"
+        danger
+        loading={eliminando}
+      />
     </Card>
   );
 }

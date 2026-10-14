@@ -4,14 +4,16 @@ import { updateTag } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { fromZodError, type ActionResult } from "@/lib/result";
 import { TAG_CLIENTES, TAG_COBRANZA, TAG_FACTURAS, TAG_PRODUCTOS } from "@/lib/tags";
-import { crearFacturaService, listarFacturasService, obtenerFacturaDetalleService, resumenCarteraService } from "./service";
+import { crearFacturaService, listarFacturasService, obtenerFacturaDetalleService, resumenCarteraService, resumenVentasPeriodoService } from "./service";
 import {
   crearFacturaSchema,
   listarFacturasSchema,
   obtenerFacturaSchema,
+  resumenVentasSchema,
   type FacturaConSaldo,
   type FacturaDetalle,
   type ResumenCartera,
+  type ResumenVentas,
 } from "./schemas";
 
 export async function crearFactura(
@@ -43,6 +45,14 @@ export async function listarFacturas(input?: unknown): Promise<ActionResult<Fact
 export async function resumenCartera(): Promise<ActionResult<ResumenCartera>> {
   await requireUser();
   return resumenCarteraService();
+}
+
+/** KPIs de ventas de un período (mes); el agregado se calcula en la BD. */
+export async function resumenVentas(input: unknown): Promise<ActionResult<ResumenVentas>> {
+  await requireUser();
+  const parsed = resumenVentasSchema.safeParse(input);
+  if (!parsed.success) return fromZodError<ResumenVentas>(parsed.error);
+  return resumenVentasPeriodoService(parsed.data);
 }
 
 export async function obtenerFactura(input: unknown): Promise<ActionResult<FacturaDetalle>> {

@@ -10,6 +10,8 @@ import type {
   ListarFacturasInput,
   PagoFactura,
   ResumenCartera,
+  ResumenVentas,
+  ResumenVentasInput,
 } from "./schemas";
 
 type FacturaFila = Database["public"]["Tables"]["facturas"]["Row"];
@@ -71,6 +73,7 @@ export async function crearFacturaRepo(input: CrearFacturaInput): Promise<string
       cantidad: item.cantidad,
       precio_unitario_usd: round2(item.precio_unitario_usd),
     })),
+    p_descuento_usd: round2(input.descuento_usd),
   });
   if (error) throw error;
   return data;
@@ -122,6 +125,17 @@ export async function resumenCarteraRepo(): Promise<ResumenCartera> {
   return data as ResumenCartera;
 }
 
+/** Totales vendidos y recaudados del período, sumados en la BD. */
+export async function resumenVentasPeriodoRepo(input: ResumenVentasInput): Promise<ResumenVentas> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("resumen_ventas_periodo", {
+    p_desde: input.desde,
+    p_hasta: input.hasta,
+  });
+  if (error) throw error;
+  return data as ResumenVentas;
+}
+
 /** Factura con ítems (con datos del producto), pagos y datos del cliente. */
 export async function obtenerFacturaDetalleRepo(id: string): Promise<FacturaDetalle> {
   const supabase = await createSupabaseServerClient();
@@ -132,7 +146,7 @@ export async function obtenerFacturaDetalleRepo(id: string): Promise<FacturaDeta
     supabase
       .from("facturas")
       .select(
-        "id, numero_factura, fecha_emision, condicion, dias_credito, fecha_vencimiento, total_usd, clientes(id, rif, nombre_juridico)"
+        "id, numero_factura, fecha_emision, condicion, dias_credito, fecha_vencimiento, total_usd, descuento_usd, clientes(id, rif, nombre_juridico)"
       )
       .eq("id", id)
       .single(),
@@ -181,6 +195,7 @@ export async function obtenerFacturaDetalleRepo(id: string): Promise<FacturaDeta
     dias_credito: factura.dias_credito,
     fecha_vencimiento: factura.fecha_vencimiento,
     total_usd: factura.total_usd,
+    descuento_usd: factura.descuento_usd,
     cliente: {
       id: factura.clientes.id,
       rif: factura.clientes.rif,

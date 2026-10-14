@@ -7,12 +7,17 @@ import {
   eliminarCliente,
   listarClientes,
 } from "@/features/clientes/actions";
+import { obtenerEstadoCuenta } from "@/features/cobranza/actions";
+import type { EstadoCuenta, FacturaEstadoCuenta } from "@/features/cobranza/estado-cuenta";
 import type { Cliente, ListarClientesResult } from "@/features/clientes/schemas";
+import { FacturaDetalleModal } from "@/features/ventas/components/factura-detalle-modal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { EstadoChip } from "@/components/ui/estado-chip";
+import { formatFecha, formatUsd } from "@/components/ui/format";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { ListSkeleton } from "@/components/ui/skeleton";
@@ -20,6 +25,7 @@ import { Modal } from "@/components/ui/modal";
 import { SearchInput } from "@/components/ui/search-input";
 import { useToast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
+import { fechaHoyISO } from "@/lib/dates";
 
 const FORM_VACIO = {
   rif: "",
@@ -66,6 +72,36 @@ export function ClientesApp({
 
   const [eliminar, setEliminar] = useState<Cliente | null>(null);
   const [eliminando, startEliminar] = useTransition();
+
+  const [historial, setHistorial] = useState<Cliente | null>(null);
+  const [historialData, setHistorialData] = useState<EstadoCuenta | null>(null);
+  const [historialCargando, setHistorialCargando] = useState(false);
+  const [historialDesde, setHistorialDesde] = useState("");
+  const [historialHasta, setHistorialHasta] = useState("");
+  const [facturaDetalle, setFacturaDetalle] = useState<FacturaEstadoCuenta | null>(null);
+
+  const rangoValido =
+    historialDesde !== "" && historialHasta !== "" && historialDesde <= historialHasta;
+
+  function cargarHistorial(clienteId: string, desde?: string, hasta?: string) {
+    setHistorialCargando(true);
+    void obtenerEstadoCuenta({ cliente_id: clienteId, desde, hasta }).then((res) => {
+      setHistorialCargando(false);
+      if (res.ok) setHistorialData(res.data);
+      else toast.error(res.error.message);
+    });
+  }
+
+  /** Abre el historial del cliente con el año en curso como rango por defecto. */
+  function abrirHistorial(cliente: Cliente) {
+    const hasta = fechaHoyISO();
+    const desde = `${hasta.slice(0, 4)}-01-01`;
+    setHistorial(cliente);
+    setHistorialData(null);
+    setHistorialDesde(desde);
+    setHistorialHasta(hasta);
+    cargarHistorial(cliente.id, desde, hasta);
+  }
 
   async function recargar(busca?: string) {
     const res = await listarClientes({ busqueda: busca ?? busqueda, porPagina: 100 });
@@ -159,15 +195,6 @@ export function ClientesApp({
     });
   }
 
-  function iniciales(nombre: string): string {
-    return nombre
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase() ?? "")
-      .join("");
-  }
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
@@ -198,9 +225,6 @@ export function ClientesApp({
           <ul className="divide-y divide-outline-variant">
             {lista.map((cliente) => (
               <li key={cliente.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-label-lg font-medium text-primary">
-                  {iniciales(cliente.nombre_juridico)}
-                </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-label-lg text-on-surface">{cliente.nombre_juridico}</p>
                   <p className="truncate text-body-sm text-on-surface-variant tabular-nums">
@@ -217,6 +241,15 @@ export function ClientesApp({
                 >
                   <Icon name="download" size={18} />
                 </a>
+                <button
+                  type="button"
+                  onClick={() => abrirHistorial(cliente)}
+                  aria-label={`Historial de ${cliente.nombre_juridico}`}
+                  title="Historial de facturas"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <Icon name="receipt_long" size={18} />
+                </button>
                 <button
                   type="button"
                   onClick={() => abrirEditar(cliente)}
@@ -351,6 +384,167 @@ export function ClientesApp({
         danger
         loading={eliminando}
       />
+
+      <Modal
+        open={historial !== null}
+        onClose={() => setHistorial(null)}
+        title={`Historial · ${historial?.nombre_juridico ?? ""}`}
+        size="md"
+        footer={
+          historial ? (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <a
+                href={urlPdfHistorial(historial.id, historialData?.rango ?? null)}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-primary text-label-lg text-on-primary transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                <Icon name="download" size={18} />
+                PDF del período
+              </a>
+              <a
+                href={`/api/estado-cuenta/${historial.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-surface-container text-label-lg text-on-surface transition-colors hover:bg-surface-container-high focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                <Icon name="download" size={18} />
+                PDF completo
+              </a>
+            </div>
+          ) : undefined
+        }
+      >
+        {historial && (
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+              <Input
+                label="Desde"
+                name="historial_desde"
+                type="date"
+                value={historialDesde}
+                max={historialHasta || undefined}
+                onChange={(e) => setHistorialDesde(e.target.value)}
+              />
+              <Input
+                label="Hasta"
+                name="historial_hasta"
+                type="date"
+                value={historialHasta}
+                min={historialDesde || undefined}
+                onChange={(e) => setHistorialHasta(e.target.value)}
+              />
+              <Button
+                variant="secondary"
+                icon="filter"
+                disabled={!rangoValido || historialCargando}
+                onClick={() => cargarHistorial(historial.id, historialDesde, historialHasta)}
+              >
+                Aplicar
+              </Button>
+            </div>
+
+            {historialCargando ? (
+              <p className="py-6 text-center text-body-sm text-on-surface-variant">Cargando historial…</p>
+            ) : historialData ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <Card contentClassName="flex flex-col gap-0.5 p-3">
+                    <p className="text-label-md text-on-surface-variant">
+                      Facturado ({historialData.facturas.length})
+                    </p>
+                    <p className="text-label-lg tabular-nums text-on-surface">
+                      {formatUsd(historialData.facturas.reduce((acc, f) => acc + f.total_usd, 0))}
+                    </p>
+                  </Card>
+                  <Card contentClassName="flex flex-col gap-0.5 p-3">
+                    <p className="text-label-md text-on-surface-variant">Saldo pendiente</p>
+                    <p className="text-label-lg tabular-nums text-on-surface">
+                      {formatUsd(historialData.saldo_pendiente_total)}
+                    </p>
+                  </Card>
+                </div>
+
+                {historialData.facturas.length === 0 ? (
+                  <p className="py-6 text-center text-body-sm text-on-surface-variant">
+                    Sin facturas emitidas en el período seleccionado.
+                  </p>
+                ) : (
+                  <Card contentClassName="p-0">
+                    <ul className="divide-y divide-outline-variant">
+                      {historialData.facturas.map((factura) => (
+                        <li key={factura.factura_id} className="flex items-center gap-3 px-4 py-2.5">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-label-md tabular-nums text-on-surface">
+                              {factura.numero_factura}
+                            </p>
+                            <p className="truncate text-body-sm tabular-nums text-on-surface-variant">
+                              {formatFecha(factura.fecha_emision)} · Vence {formatFecha(factura.fecha_vencimiento)}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-label-md tabular-nums text-on-surface">
+                              {formatUsd(factura.total_usd)}
+                            </p>
+                            {factura.saldo_usd > 0 && (
+                              <p className="text-body-sm tabular-nums text-on-surface-variant">
+                                Saldo {formatUsd(factura.saldo_usd)}
+                              </p>
+                            )}
+                          </div>
+                          <EstadoChip estado={factura.estado} className="shrink-0" />
+                          <button
+                            type="button"
+                            onClick={() => setFacturaDetalle(factura)}
+                            aria-label={`Ver factura ${factura.numero_factura}`}
+                            title="Ver factura completa"
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                          >
+                            <Icon name="chevron_right" size={20} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
+                )}
+              </>
+            ) : null}
+          </div>
+        )}
+      </Modal>
+
+      <FacturaDetalleModal
+        factura={
+          facturaDetalle
+            ? {
+                id: facturaDetalle.factura_id,
+                numero_factura: facturaDetalle.numero_factura,
+                estado: facturaDetalle.estado,
+                total_usd: facturaDetalle.total_usd,
+                total_pagado_usd: facturaDetalle.pagado_usd,
+                saldo_usd: facturaDetalle.saldo_usd,
+              }
+            : null
+        }
+        onClose={() => setFacturaDetalle(null)}
+        accion={
+          facturaDetalle && facturaDetalle.saldo_usd > 0 ? (
+            <Button
+              href={`/cobranza?pedido=${facturaDetalle.factura_id}`}
+              icon="payments"
+              className="w-full"
+            >
+              Registrar pago
+            </Button>
+          ) : undefined
+        }
+      />
     </div>
   );
+}
+
+/** URL del PDF del estado de cuenta, con rango de emisión cuando aplique. */
+function urlPdfHistorial(clienteId: string, rango: { desde: string; hasta: string } | null): string {
+  const base = `/api/estado-cuenta/${clienteId}`;
+  return rango ? `${base}?desde=${rango.desde}&hasta=${rango.hasta}` : base;
 }

@@ -46,3 +46,14 @@ export function sumarDias(fechaIso: string, dias: number): string {
 export function fechaVencimiento(fechaEmisionIso: string, diasCredito: number): string {
   return sumarDias(fechaEmisionIso, diasCredito);
 }
+
+/** Primer y último día del mes de una fecha (por defecto, hoy en Caracas). */
+export function periodoDelMes(fecha: Date = hoyCaracas()): { desde: string; hasta: string } {
+  const anio = fecha.getFullYear();
+  const mes = String(fecha.getMonth() + 1).padStart(2, "0");
+  const ultimoDia = new Date(anio, fecha.getMonth() + 1, 0).getDate();
+  return {
+    desde: `${anio}-${mes}-01`,
+    hasta: `${anio}-${mes}-${String(ultimoDia).padStart(2, "0")}`,
+  };
+}

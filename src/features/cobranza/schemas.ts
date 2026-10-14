@@ -120,6 +120,19 @@ export const ultimosPagosSchema = z.object({
   limite: z.coerce.number().int().min(1, "Límite inválido").max(50, "Máximo 50").default(10),
 });
 
+/** Consulta del estado de cuenta de un cliente, con rango de emisión opcional. */
+export const estadoCuentaSchema = z
+  .object({
+    cliente_id: z.string().uuid("Identificador de cliente inválido"),
+    desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").optional(),
+    hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").optional(),
+  })
+  .refine(
+    (v) => (v.desde === undefined) === (v.hasta === undefined),
+    "El rango debe incluir fecha inicial y final"
+  )
+  .refine((v) => !v.desde || !v.hasta || v.desde <= v.hasta, "El rango de fechas no es válido");
+
 /** Resumen de una factura con saldo pendiente (desde la vista). */
 export type SaldoPendiente = {
   factura_id: string;
@@ -155,6 +168,7 @@ export type UltimoCobro = {
 
 export type ProcesarPagoInput = z.infer<typeof procesarPagoSchema>;
 export type ListarSaldoPendienteInput = z.infer<typeof listarSaldoPendienteSchema>;
+export type EstadoCuentaInput = z.infer<typeof estadoCuentaSchema>;
 
 /**
  * Resultado de registrar un pago: el cobro recién creado y los datos de saldo

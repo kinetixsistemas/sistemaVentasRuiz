@@ -46,11 +46,31 @@ export type EstadoCuenta = {
   generado_el: string;
   facturas: FacturaEstadoCuenta[];
   saldo_pendiente_total: number;
+  /** Rango de emisión aplicado, o null si el estado de cuenta es completo. */
+  rango: RangoEstadoCuenta | null;
 };
 
+/** Rango (inclusive) de emisión para el estado de cuenta. */
+export type RangoEstadoCuenta = { desde: string; hasta: string };
+
 /** Arma el estado de cuenta de un cliente (solo lectura, para PDF o pantalla). */
-export async function obtenerEstadoCuentaRepo(clienteId: string): Promise<EstadoCuenta> {
+export async function obtenerEstadoCuentaRepo(
+  clienteId: string,
+  rango?: RangoEstadoCuenta
+): Promise<EstadoCuenta> {
   const supabase = await createSupabaseServerClient();
+
+  let facturasConsulta = supabase
+    .from("facturas_con_saldo")
+    .select(
+      "id, numero_factura, fecha_emision, fecha_vencimiento, condicion, total_usd, total_pagado_usd, saldo_usd, estado"
+    )
+    .eq("cliente_id", clienteId);
+  if (rango) {
+    facturasConsulta = facturasConsulta
+      .gte("fecha_emision", rango.desde)
+      .lte("fecha_emision", rango.hasta);
+  }
 
   // Cliente, empresa y facturas en paralelo; los pagos dependen de las facturas.
   const [clienteRes, empresaRes, facturasRes] = await Promise.all([
@@ -64,13 +84,7 @@ export async function obtenerEstadoCuentaRepo(clienteId: string): Promise<Estado
       .select("nombre_comercial, razon_social, rif, telefono, correo, direccion")
       .eq("id", 1)
       .maybeSingle(),
-    supabase
-      .from("facturas_con_saldo")
-      .select(
-        "id, numero_factura, fecha_emision, fecha_vencimiento, condicion, total_usd, total_pagado_usd, saldo_usd, estado"
-      )
-      .eq("cliente_id", clienteId)
-      .order("fecha_emision", { ascending: true }),
+    facturasConsulta.order("fecha_emision", { ascending: true }),
   ]);
 
   if (clienteRes.error) throw clienteRes.error;
@@ -123,14 +137,16 @@ export async function obtenerEstadoCuentaRepo(clienteId: string): Promise<Estado
     generado_el: fechaHoyISO(),
     facturas,
     saldo_pendiente_total: saldoPendienteTotal,
+    rango: rango ?? null,
   };
 }
 
 export async function obtenerEstadoCuentaService(
-  clienteId: string
+  clienteId: string,
+  rango?: RangoEstadoCuenta
 ): Promise<ActionResult<EstadoCuenta>> {
   try {
-    const estado = await obtenerEstadoCuentaRepo(clienteId);
+    const estado = await obtenerEstadoCuentaRepo(clienteId, rango);
     return okResult(estado);
   } catch (error) {
     return fromPostgresError(error);

@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui/page-header";
-import { listarFacturas, resumenCartera } from "@/features/ventas/actions";
+import { listarFacturas, resumenCartera, resumenVentas } from "@/features/ventas/actions";
 import { listarClientes } from "@/features/clientes/actions";
 import { listarProductos } from "@/features/inventario/actions";
 import { VentasApp } from "@/features/ventas/components/ventas-app";
+import { periodoDelMes } from "@/lib/dates";
 
 export const metadata: Metadata = {
   title: "Ventas",
@@ -16,15 +17,17 @@ export default async function VentasPage({
 }) {
   const { nueva } = await searchParams;
   const abrirNueva = (Array.isArray(nueva) ? nueva[0] : nueva) === "1";
+  const periodoActual = periodoDelMes();
 
-  const [resumenRes, facturasRes, clientesRes, productosRes] = await Promise.all([
+  const [resumenRes, resumenVentasRes, facturasRes, clientesRes, productosRes] = await Promise.all([
     resumenCartera(),
+    resumenVentas(periodoActual),
     listarFacturas({ estado: "todas", limite: 50 }),
     listarClientes({ porPagina: 100 }),
     listarProductos({ porPagina: 100 }),
   ]);
 
-  const resultados = [resumenRes, facturasRes, clientesRes, productosRes];
+  const resultados = [resumenRes, resumenVentasRes, facturasRes, clientesRes, productosRes];
   const fallo = resultados.some((r) => !r.ok);
 
   return (
@@ -36,6 +39,9 @@ export default async function VentasPage({
         clientes={clientesRes.ok ? clientesRes.data.clientes : []}
         productos={productosRes.ok ? productosRes.data.productos : []}
         abrirNueva={abrirNueva}
+        periodoInicial={periodoActual}
+        periodoActual={periodoActual}
+        resumenVentasInicial={resumenVentasRes.ok ? resumenVentasRes.data : null}
         errorMensaje={
           fallo
             ? "No se pudieron cargar todos los datos de ventas. Revisa tu conexión e inténtalo de nuevo."

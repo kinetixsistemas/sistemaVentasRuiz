@@ -3,8 +3,10 @@
 import { useState, useTransition } from "react";
 import { procesarPago } from "@/features/cobranza/actions";
 import type { ListarSaldoPendienteResult, SaldoPendiente, UltimoCobro } from "@/features/cobranza/schemas";
+import { FacturaDetalleModal } from "@/features/ventas/components/factura-detalle-modal";
 import type { MetodoPago } from "@/types/database";
 import { round2 } from "@/lib/currency";
+import { fechaHoyISO } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
@@ -47,17 +49,19 @@ export function CobranzaApp({
     if (!pedidoFacturaId) return null;
     return datos.facturas.find((f) => f.factura_id === pedidoFacturaId) ?? null;
   });
+  const [detalle, setDetalle] = useState<SaldoPendiente | null>(null);
 
   const [metodo, setMetodo] = useState<MetodoPago>("efectivo");
   const [monto, setMonto] = useState("");
   const [tasa, setTasa] = useState("");
   const [referencia, setReferencia] = useState("");
   const [correo, setCorreo] = useState("");
-  const [fecha, setFecha] = useState("");
+  const [fecha, setFecha] = useState(() => fechaHoyISO());
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, startGuardar] = useTransition();
 
   const esBs = metodo === "bs";
+  const esEfectivo = metodo === "efectivo";
   const esDigital = metodo === "zelle" || metodo === "binance";
   const montoNum = Number(monto) || 0;
   const usdEstimado = esBs && Number(tasa) > 0 ? round2(montoNum / Number(tasa)) : montoNum;
@@ -80,8 +84,15 @@ export function CobranzaApp({
     setTasa("");
     setReferencia("");
     setCorreo("");
-    setFecha("");
+    setFecha(fechaHoyISO());
     setErrores({});
+  }
+
+  function cambiarMetodo(nuevo: MetodoPago) {
+    setMetodo(nuevo);
+    // Referencia y correo solo aplican a ciertos métodos: se limpian los que no.
+    if (nuevo === "efectivo") setReferencia("");
+    if (nuevo !== "zelle" && nuevo !== "binance") setCorreo("");
   }
 
   function guardarPago(evento: React.FormEvent<HTMLFormElement>) {
@@ -94,7 +105,7 @@ export function CobranzaApp({
         metodo,
         monto: montoNum,
         tasa_cambio: esBs && tasa !== "" ? Number(tasa) : undefined,
-        referencia: referencia.trim() === "" ? undefined : referencia.trim(),
+        referencia: esEfectivo || referencia.trim() === "" ? undefined : referencia.trim(),
         correo: correo.trim() === "" ? undefined : correo.trim(),
         fecha: fecha === "" ? undefined : fecha,
       });
@@ -193,15 +204,24 @@ export function CobranzaApp({
                       )}
                     </p>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-label-lg tabular-nums text-on-surface">{formatUsd(factura.saldo_usd)}</p>
-                    <p className="text-body-sm text-on-surface-variant">
-                      de <span className="tabular-nums">{formatUsd(factura.total_usd)}</span>
-                    </p>
-                  </div>
-                  <Button variant="secondary" size="sm" icon="payments" onClick={() => abrirCobro(factura)}>
-                    <span className="hidden sm:inline">Cobrar</span>
-                  </Button>
+<div className="shrink-0 text-right">
+                     <p className="text-label-lg tabular-nums text-on-surface">{formatUsd(factura.saldo_usd)}</p>
+                     <p className="text-body-sm text-on-surface-variant">
+                       de <span className="tabular-nums">{formatUsd(factura.total_usd)}</span>
+                     </p>
+                   </div>
+                   <button
+                     type="button"
+                     onClick={() => setDetalle(factura)}
+                     aria-label={`Ver detalle de factura ${factura.numero_factura}`}
+                     title="Ver factura completa"
+                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                   >
+                     <Icon name="chevron_right" size={20} />
+                   </button>
+                   <Button variant="secondary" size="sm" icon="payments" onClick={() => abrirCobro(factura)}>
+                     <span className="hidden sm:inline">Cobrar</span>
+                   </Button>
                 </li>
               ))}
             </ul>
@@ -271,7 +291,7 @@ export function CobranzaApp({
               label="Método de pago"
               name="metodo"
               value={metodo}
-              onChange={(e) => setMetodo(e.target.value as MetodoPago)}
+              onChange={(e) => cambiarMetodo(e.target.value as MetodoPago)}
               options={[
                 { value: "efectivo", label: "Efectivo (USD)" },
                 { value: "bs", label: "Bolívares" },
@@ -325,15 +345,17 @@ export function CobranzaApp({
               />
             )}
 
-            <Input
-              label="Referencia"
-              name="referencia"
-              placeholder="Nº de referencia del pago"
-              value={referencia}
-              onChange={(e) => setReferencia(e.target.value)}
-              error={errores.referencia}
-              hint={esBs || esDigital ? "Obligatoria para este método." : undefined}
-            />
+            {!esEfectivo && (
+              <Input
+                label="Referencia"
+                name="referencia"
+                placeholder="Nº de referencia del pago"
+                value={referencia}
+                onChange={(e) => setReferencia(e.target.value)}
+                error={errores.referencia}
+                hint={esBs || esDigital ? "Obligatoria para este método." : undefined}
+              />
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <Input
@@ -354,6 +376,37 @@ export function CobranzaApp({
           </form>
         )}
       </Modal>
+
+      <FacturaDetalleModal
+        factura={
+          detalle
+            ? {
+                id: detalle.factura_id,
+                numero_factura: detalle.numero_factura,
+                estado: detalle.estado,
+                total_usd: detalle.total_usd,
+                total_pagado_usd: detalle.total_pagado_usd,
+                saldo_usd: detalle.saldo_usd,
+              }
+            : null
+        }
+        onClose={() => setDetalle(null)}
+        accion={
+          detalle ? (
+            <Button
+              icon="payments"
+              className="w-full"
+              onClick={() => {
+                const factura = detalle;
+                setDetalle(null);
+                abrirCobro(factura);
+              }}
+            >
+              Registrar pago
+            </Button>
+          ) : undefined
+        }
+      />
     </div>
   );
 }

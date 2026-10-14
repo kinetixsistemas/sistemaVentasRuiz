@@ -110,6 +110,7 @@ export interface Database {
           dias_credito: number;
           fecha_vencimiento: string;
           total_usd: number;
+          descuento_usd: number;
           total_pagado_usd: number;
           created_at: string;
         };
@@ -122,6 +123,7 @@ export interface Database {
           dias_credito: number;
           fecha_vencimiento: string;
           total_usd: number;
+          descuento_usd?: number;
           total_pagado_usd?: number;
           created_at?: string;
         };
@@ -134,6 +136,7 @@ export interface Database {
           dias_credito?: number;
           fecha_vencimiento?: string;
           total_usd?: number;
+          descuento_usd?: number;
           total_pagado_usd?: number;
           created_at?: string;
         };
@@ -311,6 +314,7 @@ export interface Database {
           p_condicion: string;
           p_dias_credito: number;
           p_items: Json;
+          p_descuento_usd: number;
         };
         Returns: string;
       };
@@ -341,6 +345,16 @@ export interface Database {
           facturas_vencidas: number;
           por_vencer_usd: number;
           facturas_por_vencer: number;
+        };
+      };
+      resumen_ventas_periodo: {
+        Args: {
+          p_desde: string;
+          p_hasta: string;
+        };
+        Returns: {
+          total_vendido_usd: number;
+          total_recaudado_usd: number;
         };
       };
       productos_stock_bajo: {

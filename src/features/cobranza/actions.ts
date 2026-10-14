@@ -10,6 +10,7 @@ import {
   ultimosPagosService,
 } from "./service";
 import {
+  estadoCuentaSchema,
   listarSaldoPendienteSchema,
   procesarPagoSchema,
   ultimosPagosSchema,
@@ -17,6 +18,7 @@ import {
   type PagoRegistrado,
   type UltimoCobro,
 } from "./schemas";
+import { obtenerEstadoCuentaService, type EstadoCuenta } from "./estado-cuenta";
 
 export async function procesarPago(input: unknown): Promise<ActionResult<PagoRegistrado>> {
   await requireUser();
@@ -47,4 +49,13 @@ export async function ultimosPagos(input?: unknown): Promise<ActionResult<Ultimo
   const parsed = ultimosPagosSchema.safeParse(input ?? {});
   if (!parsed.success) return fromZodError<UltimoCobro[]>(parsed.error);
   return ultimosPagosService(parsed.data.limite);
+}
+
+/** Estado de cuenta de un cliente (historial), con rango de emisión opcional. */
+export async function obtenerEstadoCuenta(input: unknown): Promise<ActionResult<EstadoCuenta>> {
+  await requireUser();
+  const parsed = estadoCuentaSchema.safeParse(input);
+  if (!parsed.success) return fromZodError<EstadoCuenta>(parsed.error);
+  const { cliente_id, desde, hasta } = parsed.data;
+  return obtenerEstadoCuentaService(cliente_id, desde && hasta ? { desde, hasta } : undefined);
 }

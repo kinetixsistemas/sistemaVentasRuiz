@@ -1,9 +1,22 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { procesarPago } from "@/features/cobranza/actions";
-import type { ListarSaldoPendienteResult, SaldoPendiente, UltimoCobro } from "@/features/cobranza/schemas";
+import { procesarPago, procesarPagoAsignado } from "@/features/cobranza/actions";
+import type {
+  ListarSaldoPendienteResult,
+  PagoRegistrado,
+  SaldoPendiente,
+  UltimoCobro,
+} from "@/features/cobranza/schemas";
+import {
+  calcularExcedente,
+  deudaTotalCliente,
+  facturasDelCliente,
+  TOLERANCIA_USD,
+  validarAsignaciones,
+} from "@/features/cobranza/asignacion";
 import { FacturaDetalleModal } from "@/features/ventas/components/factura-detalle-modal";
+import { FilaFactura } from "@/features/ventas/components/factura-fila";
 import type { MetodoPago } from "@/types/database";
 import { round2 } from "@/lib/currency";
 import { fechaHoyISO } from "@/lib/dates";
@@ -11,7 +24,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
-import { EstadoChip } from "@/components/ui/estado-chip";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -57,6 +69,7 @@ export function CobranzaApp({
   const [referencia, setReferencia] = useState("");
   const [correo, setCorreo] = useState("");
   const [fecha, setFecha] = useState(() => fechaHoyISO());
+  const [asignaciones, setAsignaciones] = useState<Record<string, string>>({});
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, startGuardar] = useTransition();
 
@@ -65,6 +78,23 @@ export function CobranzaApp({
   const esDigital = metodo === "zelle" || metodo === "binance";
   const montoNum = Number(monto) || 0;
   const usdEstimado = esBs && Number(tasa) > 0 ? round2(montoNum / Number(tasa)) : montoNum;
+
+  // Deuda total del cliente y excedente a repartir cuando el monto supera el
+  // saldo de la factura elegida. Todo en USD (moneda base).
+  const facturasCliente = pago ? facturasDelCliente(facturas, pago.cliente_id) : [];
+  const deudaCliente = pago ? deudaTotalCliente(facturas, pago.cliente_id) : 0;
+  const otrasFacturas = pago
+    ? facturasCliente.filter((f) => f.factura_id !== pago.factura_id)
+    : [];
+  const excedente = pago ? calcularExcedente(usdEstimado, pago.saldo_usd) : 0;
+  const requiereAsignacion = excedente > TOLERANCIA_USD;
+  const validacionAsignacion = validarAsignaciones(
+    excedente,
+    otrasFacturas.map((f) => ({
+      saldo_usd: f.saldo_usd,
+      monto_usd: Number(asignaciones[f.factura_id]) || 0,
+    }))
+  );
 
   const totalPendiente = facturas.reduce((acc, f) => acc + f.saldo_usd, 0);
   const abiertas = facturas.length;
@@ -85,6 +115,7 @@ export function CobranzaApp({
     setReferencia("");
     setCorreo("");
     setFecha(fechaHoyISO());
+    setAsignaciones({});
     setErrores({});
   }
 
@@ -95,48 +126,79 @@ export function CobranzaApp({
     if (nuevo !== "zelle" && nuevo !== "binance") setCorreo("");
   }
 
+  function aplicarResultados(registrados: PagoRegistrado[]) {
+    const porFactura = new Map(registrados.map((r) => [r.factura_id, r]));
+    setFacturas((prev) =>
+      prev.flatMap((f) => {
+        const r = porFactura.get(f.factura_id);
+        if (!r) return [f];
+        if (r.saldo_usd <= TOLERANCIA_USD) return [];
+        return [
+          {
+            ...f,
+            saldo_usd: r.saldo_usd,
+            total_pagado_usd: round2(f.total_pagado_usd + r.monto_usd),
+          },
+        ];
+      })
+    );
+    const saldadas = registrados.filter((r) => r.saldo_usd <= TOLERANCIA_USD).length;
+    if (saldadas > 0) setTotalSaldo((t) => Math.max(0, t - saldadas));
+    setPagos((prev) => [...registrados.map((r) => r.pago), ...prev].slice(0, 10));
+  }
+
   function guardarPago(evento: React.FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     if (!pago) return;
     setErrores({});
     startGuardar(async () => {
-      const res = await procesarPago({
-        factura_id: pago.factura_id,
+      const comunes = {
         metodo,
-        monto: montoNum,
         tasa_cambio: esBs && tasa !== "" ? Number(tasa) : undefined,
         referencia: esEfectivo || referencia.trim() === "" ? undefined : referencia.trim(),
         correo: correo.trim() === "" ? undefined : correo.trim(),
         fecha: fecha === "" ? undefined : fecha,
-      });
+      };
 
-      if (!res.ok) {
-        setErrores(res.error.fieldErrors ?? {});
-        toast.error(res.error.message);
-        return;
+      let registrados: PagoRegistrado[];
+
+      if (requiereAsignacion) {
+        if (!validacionAsignacion.valido) return;
+        const res = await procesarPagoAsignado({
+          ...comunes,
+          asignaciones: [
+            { factura_id: pago.factura_id, monto_usd: pago.saldo_usd },
+            ...otrasFacturas
+              .map((f) => ({
+                factura_id: f.factura_id,
+                monto_usd: Number(asignaciones[f.factura_id]) || 0,
+              }))
+              .filter((a) => a.monto_usd > 0),
+          ],
+        });
+        if (!res.ok) {
+          setErrores(res.error.fieldErrors ?? {});
+          toast.error(res.error.message);
+          return;
+        }
+        registrados = res.data.pagos;
+      } else {
+        const res = await procesarPago({
+          factura_id: pago.factura_id,
+          monto: montoNum,
+          ...comunes,
+        });
+        if (!res.ok) {
+          setErrores(res.error.fieldErrors ?? {});
+          toast.error(res.error.message);
+          return;
+        }
+        registrados = [res.data];
       }
+
       setPago(null);
       toast.success("Pago registrado y saldo actualizado");
-
-      // Se actualiza la pantalla con la respuesta de la mutación, sin recargar
-      // la lista completa ni los últimos cobros desde la base de datos.
-      const { pago: cobro, factura_id, monto_usd, saldo_usd } = res.data;
-      const saldada = saldo_usd <= 0.005;
-      setFacturas((prev) =>
-        prev.flatMap((f) => {
-          if (f.factura_id !== factura_id) return [f];
-          if (saldada) return [];
-          return [
-            {
-              ...f,
-              saldo_usd,
-              total_pagado_usd: round2(f.total_pagado_usd + monto_usd),
-            },
-          ];
-        })
-      );
-      if (saldada) setTotalSaldo((t) => Math.max(0, t - 1));
-      setPagos((prev) => [cobro, ...prev].slice(0, 10));
+      aplicarResultados(registrados);
     });
   }
 
@@ -186,43 +248,22 @@ export function CobranzaApp({
           <Card contentClassName="p-0">
             <ul className="divide-y divide-outline-variant">
               {facturas.map((factura) => (
-                <li key={factura.factura_id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-label-lg tabular-nums text-on-surface">{factura.numero_factura}</p>
-                      <EstadoChip estado={factura.estado} className="hidden sm:inline-flex" />
-                    </div>
-                    <p className="mt-0.5 text-body-sm text-on-surface-variant">
-                      {factura.condicion === "credito" ? (
-                        factura.dias_mora > 0 ? (
-                          <span className="text-status-vencida-text tabular-nums">Vencida hace {factura.dias_mora} día{factura.dias_mora === 1 ? "" : "s"}</span>
-                        ) : (
-                          <span className="tabular-nums">Vence {formatFecha(factura.fecha_vencimiento)}</span>
-                        )
-                      ) : (
-                        "De contado"
-                      )}
-                    </p>
-                  </div>
-<div className="shrink-0 text-right">
-                     <p className="text-label-lg tabular-nums text-on-surface">{formatUsd(factura.saldo_usd)}</p>
-                     <p className="text-body-sm text-on-surface-variant">
-                       de <span className="tabular-nums">{formatUsd(factura.total_usd)}</span>
-                     </p>
-                   </div>
-                   <button
-                     type="button"
-                     onClick={() => setDetalle(factura)}
-                     aria-label={`Ver detalle de factura ${factura.numero_factura}`}
-                     title="Ver factura completa"
-                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                   >
-                     <Icon name="chevron_right" size={20} />
-                   </button>
-                   <Button variant="secondary" size="sm" icon="payments" onClick={() => abrirCobro(factura)}>
-                     <span className="hidden sm:inline">Cobrar</span>
-                   </Button>
-                </li>
+                <FilaFactura
+                  key={factura.factura_id}
+                  factura={factura}
+                  onVerDetalle={() => setDetalle(factura)}
+                  accionCobro={
+                    <Button
+                      size="sm"
+                      icon="payments"
+                      onClick={() => abrirCobro(factura)}
+                      aria-label={`Cobrar factura ${factura.numero_factura}`}
+                      className="shrink-0"
+                    >
+                      <span className="hidden sm:inline">Cobrar</span>
+                    </Button>
+                  }
+                />
               ))}
             </ul>
           </Card>
@@ -274,7 +315,14 @@ export function CobranzaApp({
             <Button variant="secondary" className="w-full sm:flex-1" disabled={guardando} onClick={() => setPago(null)}>
               Cancelar
             </Button>
-            <Button type="submit" form="form-pago" icon="payments" loading={guardando} className="w-full sm:flex-1">
+            <Button
+              type="submit"
+              form="form-pago"
+              icon="payments"
+              loading={guardando}
+              disabled={guardando || (requiereAsignacion && !validacionAsignacion.valido)}
+              className="w-full sm:flex-1"
+            >
               Registrar pago
             </Button>
           </div>
@@ -282,9 +330,15 @@ export function CobranzaApp({
       >
         {pago && (
           <form id="form-pago" onSubmit={guardarPago} className="flex flex-col gap-4" noValidate>
-            <div className="flex items-center justify-between rounded-xl bg-surface-container px-4 py-3">
-              <span className="text-label-md text-on-surface-variant">Saldo pendiente</span>
-              <span className="text-label-lg tabular-nums text-on-surface">{formatUsd(pago.saldo_usd)}</span>
+            <div className="flex flex-col gap-2 rounded-xl bg-surface-container px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-label-md text-on-surface-variant">Saldo pendiente</span>
+                <span className="text-label-lg tabular-nums text-on-surface">{formatUsd(pago.saldo_usd)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-label-md text-on-surface-variant">Deuda total del cliente</span>
+                <span className="text-label-md tabular-nums text-on-surface-variant">{formatUsd(deudaCliente)}</span>
+              </div>
             </div>
 
             <Select
@@ -349,11 +403,15 @@ export function CobranzaApp({
               <Input
                 label="Referencia"
                 name="referencia"
-                placeholder="Nº de referencia del pago"
+                placeholder="Últimos 6 dígitos (Ej. 001234)"
                 value={referencia}
                 onChange={(e) => setReferencia(e.target.value)}
                 error={errores.referencia}
-                hint={esBs || esDigital ? "Obligatoria para este método." : undefined}
+                hint={
+                  esBs || esDigital
+                    ? "Obligatoria. Se comparan los últimos 6 dígitos; si tiene menos, complete con 0 a la izquierda."
+                    : undefined
+                }
               />
             )}
 
@@ -373,6 +431,68 @@ export function CobranzaApp({
                 </p>
               </div>
             </div>
+
+            {requiereAsignacion && (
+              <div className="flex flex-col gap-3 rounded-xl border border-outline-variant p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-label-md text-on-surface-variant">Excedente a asignar</span>
+                  <span className="text-label-lg tabular-nums text-primary">{formatUsd(excedente)}</span>
+                </div>
+                {otrasFacturas.length === 0 ? (
+                  <p className="text-body-sm text-error">
+                    El cliente no tiene otras facturas abiertas para asignar el excedente.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-body-sm text-on-surface-variant">
+                      Reparte el excedente entre las demás facturas del cliente (montos en USD).
+                    </p>
+                    <ul className="flex flex-col gap-3">
+                      {otrasFacturas.map((factura) => (
+                        <li key={factura.factura_id} className="flex items-center gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-label-md tabular-nums text-on-surface">
+                              {factura.numero_factura}
+                            </p>
+                            <p className="text-body-sm text-on-surface-variant">
+                              Saldo {formatUsd(factura.saldo_usd)}
+                            </p>
+                          </div>
+                          <div className="w-28 shrink-0">
+                            <Input
+                              name={`asign_${factura.factura_id}`}
+                              type="number"
+                              min={0}
+                              max={factura.saldo_usd}
+                              step="0.01"
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              value={asignaciones[factura.factura_id] ?? ""}
+                              onChange={(e) =>
+                                setAsignaciones((prev) => ({
+                                  ...prev,
+                                  [factura.factura_id]: e.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    <p
+                      className={cn(
+                        "text-body-sm tabular-nums",
+                        validacionAsignacion.valido ? "text-primary" : "text-on-surface-variant"
+                      )}
+                    >
+                      {validacionAsignacion.valido
+                        ? "Excedente asignado por completo."
+                        : `Falta por asignar ${formatUsd(validacionAsignacion.restante)}`}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
           </form>
         )}
       </Modal>

@@ -5,6 +5,7 @@ import { obtenerFactura } from "@/features/ventas/actions";
 import type { FacturaDetalle } from "@/features/ventas/schemas";
 import type { EstadoFactura } from "@/types/database";
 import { Card } from "@/components/ui/card";
+import { cn } from "@/components/ui/cn";
 import { EstadoChip } from "@/components/ui/estado-chip";
 import { Icon } from "@/components/ui/icon";
 import { InlineAlert } from "@/components/ui/inline-alert";
@@ -50,7 +51,7 @@ export function FacturaDetalleModal({
   useEffect(() => {
     if (!facturaId) return;
     let activo = true;
-    void obtenerFactura(facturaId).then((res) => {
+    void obtenerFactura({ id: facturaId }).then((res) => {
       if (!activo) return;
       setResultado(
         res.ok
@@ -88,18 +89,42 @@ export function FacturaDetalleModal({
             <InlineAlert>{error}</InlineAlert>
           ) : detalle ? (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="font-medium text-on-surface">{detalle.cliente.nombre_juridico}</p>
-                  <p className="text-body-sm tabular-nums text-on-surface-variant">
-                    {detalle.cliente.rif} · Emitida {formatFecha(detalle.fecha_emision)} ·{" "}
-                    {labelCondicion(detalle.condicion)}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-headline-sm text-on-surface">
+                    {detalle.cliente.nombre_juridico}
                   </p>
-                  <p className="text-body-sm tabular-nums text-on-surface-variant">
-                    Vence {formatFecha(detalle.fecha_vencimiento)}
+                  <p className="truncate text-body-sm tabular-nums text-on-surface-variant">
+                    {detalle.cliente.rif}
                   </p>
                 </div>
-                <EstadoChip estado={factura.estado} />
+                <EstadoChip estado={factura.estado} className="shrink-0" />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <div className="rounded-lg bg-surface-container px-3.5 py-2.5">
+                  <p className="text-label-sm text-on-surface-variant">Condición de pago</p>
+                  <p className="text-label-md text-on-surface">
+                    {labelCondicion(detalle.condicion)}
+                    {detalle.condicion === "credito" && detalle.dias_credito > 0
+                      ? ` · ${detalle.dias_credito} días`
+                      : ""}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg bg-surface-container px-3.5 py-2.5">
+                    <p className="text-label-sm text-on-surface-variant">Emitida</p>
+                    <p className="text-label-md tabular-nums text-on-surface">
+                      {formatFecha(detalle.fecha_emision)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-surface-container px-3.5 py-2.5">
+                    <p className="text-label-sm text-on-surface-variant">Vence</p>
+                    <p className="text-label-md tabular-nums text-on-surface">
+                      {formatFecha(detalle.fecha_vencimiento)}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
@@ -122,7 +147,12 @@ export function FacturaDetalleModal({
                 </Card>
                 <Card contentClassName="flex flex-col gap-0.5 p-3">
                   <p className="text-label-md text-on-surface-variant">Saldo</p>
-                  <p className="text-label-lg tabular-nums text-on-surface">
+                  <p
+                    className={cn(
+                      "truncate text-headline-sm tabular-nums",
+                      factura.saldo_usd > 0.005 ? "text-primary" : "text-status-pagada-text"
+                    )}
+                  >
                     {formatUsd(factura.saldo_usd)}
                   </p>
                 </Card>
@@ -141,7 +171,9 @@ export function FacturaDetalleModal({
               ) : null}
 
               <div>
-                <p className="mb-2 text-label-md text-on-surface-variant">Productos</p>
+                <p className="mb-2 text-label-md text-on-surface-variant">
+                  Productos ({detalle.items.length})
+                </p>
                 <Card contentClassName="p-0">
                   <ul className="divide-y divide-outline-variant">
                     {detalle.items.map((item) => (

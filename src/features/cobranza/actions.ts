@@ -6,15 +6,18 @@ import { fromZodError, type ActionResult } from "@/lib/result";
 import { TAG_CLIENTES, TAG_COBRANZA, TAG_FACTURAS } from "@/lib/tags";
 import {
   listarSaldoPendienteService,
+  procesarPagoAsignadoService,
   procesarPagoService,
   ultimosPagosService,
 } from "./service";
 import {
   estadoCuentaSchema,
   listarSaldoPendienteSchema,
+  procesarPagoAsignadoSchema,
   procesarPagoSchema,
   ultimosPagosSchema,
   type ListarSaldoPendienteResult,
+  type PagoAsignadoRegistrado,
   type PagoRegistrado,
   type UltimoCobro,
 } from "./schemas";
@@ -28,6 +31,22 @@ export async function procesarPago(input: unknown): Promise<ActionResult<PagoReg
   const result = await procesarPagoService(parsed.data);
   if (result.ok) {
     // El pago afecta el saldo de la factura y el estado de cuenta del cliente.
+    updateTag(TAG_COBRANZA);
+    updateTag(TAG_FACTURAS);
+    updateTag(TAG_CLIENTES);
+  }
+  return result;
+}
+
+export async function procesarPagoAsignado(
+  input: unknown
+): Promise<ActionResult<PagoAsignadoRegistrado>> {
+  await requireUser();
+  const parsed = procesarPagoAsignadoSchema.safeParse(input);
+  if (!parsed.success) return fromZodError<PagoAsignadoRegistrado>(parsed.error);
+
+  const result = await procesarPagoAsignadoService(parsed.data);
+  if (result.ok) {
     updateTag(TAG_COBRANZA);
     updateTag(TAG_FACTURAS);
     updateTag(TAG_CLIENTES);

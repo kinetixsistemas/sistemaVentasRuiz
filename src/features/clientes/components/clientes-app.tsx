@@ -9,11 +9,12 @@ import {
 } from "@/features/clientes/actions";
 import { obtenerEstadoCuenta } from "@/features/cobranza/actions";
 import type { EstadoCuenta, FacturaEstadoCuenta } from "@/features/cobranza/estado-cuenta";
-import type { Cliente, ListarClientesResult } from "@/features/clientes/schemas";
+import type { Cliente, ClienteConCartera, ListarClientesResult } from "@/features/clientes/schemas";
 import { FacturaDetalleModal } from "@/features/ventas/components/factura-detalle-modal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
+import { cn } from "@/components/ui/cn";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EstadoChip } from "@/components/ui/estado-chip";
@@ -39,8 +40,31 @@ const FORM_VACIO = {
 
 type ClienteForm = typeof FORM_VACIO;
 
+type FiltroHistorial = "todas" | "pagadas" | "no_pagadas";
+
+const FILTROS_HISTORIAL: { value: FiltroHistorial; label: string }[] = [
+  { value: "todas", label: "Todas" },
+  { value: "pagadas", label: "Pagadas" },
+  { value: "no_pagadas", label: "No pagadas" },
+];
+
+/** Una factura está cancelada cuando su saldo llega a cero (con tolerancia). */
+function esPagada(factura: FacturaEstadoCuenta): boolean {
+  return factura.saldo_usd <= 0.005;
+}
+
+/** Filtra las facturas del historial según el estado de pago elegido. */
+function filtrarHistorial(
+  facturas: FacturaEstadoCuenta[],
+  filtro: FiltroHistorial
+): FacturaEstadoCuenta[] {
+  if (filtro === "pagadas") return facturas.filter(esPagada);
+  if (filtro === "no_pagadas") return facturas.filter((f) => !esPagada(f));
+  return facturas;
+}
+
 /** Inserta un cliente manteniendo el orden por nombre jurídico que usa la lista. */
-function insertarOrdenado(lista: Cliente[], cliente: Cliente): Cliente[] {
+function insertarOrdenado(lista: ClienteConCartera[], cliente: ClienteConCartera): ClienteConCartera[] {
   const copia = [...lista, cliente];
   copia.sort((a, b) => a.nombre_juridico.localeCompare(b.nombre_juridico, "es"));
   return copia;
@@ -58,7 +82,7 @@ export function ClientesApp({
 }) {
   const toast = useToast();
 
-  const [lista, setLista] = useState<Cliente[]>(datos.clientes);
+  const [lista, setLista] = useState<ClienteConCartera[]>(datos.clientes);
   const [total, setTotal] = useState(datos.total);
   const [busqueda, setBusqueda] = useState(busquedaInicial);
   const [cargando, startCargar] = useTransition();
@@ -78,10 +102,20 @@ export function ClientesApp({
   const [historialCargando, setHistorialCargando] = useState(false);
   const [historialDesde, setHistorialDesde] = useState("");
   const [historialHasta, setHistorialHasta] = useState("");
+  const [historialFiltro, setHistorialFiltro] = useState<FiltroHistorial>("todas");
   const [facturaDetalle, setFacturaDetalle] = useState<FacturaEstadoCuenta | null>(null);
 
   const rangoValido =
     historialDesde !== "" && historialHasta !== "" && historialDesde <= historialHasta;
+
+  const facturasHistorial = historialData?.facturas ?? [];
+  const conteoPagadas = facturasHistorial.filter(esPagada).length;
+  const conteosHistorial: Record<FiltroHistorial, number> = {
+    todas: facturasHistorial.length,
+    pagadas: conteoPagadas,
+    no_pagadas: facturasHistorial.length - conteoPagadas,
+  };
+  const facturasVisibles = filtrarHistorial(facturasHistorial, historialFiltro);
 
   function cargarHistorial(clienteId: string, desde?: string, hasta?: string) {
     setHistorialCargando(true);
@@ -100,6 +134,7 @@ export function ClientesApp({
     setHistorialData(null);
     setHistorialDesde(desde);
     setHistorialHasta(hasta);
+    setHistorialFiltro("todas");
     cargarHistorial(cliente.id, desde, hasta);
   }
 
@@ -170,11 +205,15 @@ export function ClientesApp({
       // Se actualiza la lista con la respuesta de la mutación. Solo se recarga
       // cuando hay una búsqueda activa (el filtro se resuelve en la base de datos).
       if (editando) {
-        setLista((prev) => prev.map((c) => (c.id === res.data.id ? res.data : c)));
+        setLista((prev) =>
+          prev.map((c) =>
+            c.id === res.data.id ? { ...res.data, facturas_pendientes: c.facturas_pendientes } : c
+          )
+        );
       } else if (busqueda.trim() !== "") {
         await recargar();
       } else {
-        setLista((prev) => insertarOrdenado(prev, res.data));
+        setLista((prev) => insertarOrdenado(prev, { ...res.data, facturas_pendientes: 0 }));
         setTotal((t) => t + 1);
       }
     });
@@ -228,19 +267,17 @@ export function ClientesApp({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-label-lg text-on-surface">{cliente.nombre_juridico}</p>
                   <p className="truncate text-body-sm text-on-surface-variant tabular-nums">
-                    {cliente.rif} · {cliente.telefono}
+                    {cliente.rif}
+                    {cliente.facturas_pendientes > 0 && (
+                      <>
+                        {" · "}
+                        <span className="font-medium text-status-por-vencer-text">
+                          {cliente.facturas_pendientes} por pagar
+                        </span>
+                      </>
+                    )}
                   </p>
                 </div>
-                <a
-                  href={`/api/estado-cuenta/${cliente.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                  aria-label={`Descargar estado de cuenta de ${cliente.nombre_juridico}`}
-                  title="Estado de cuenta (PDF)"
-                >
-                  <Icon name="download" size={18} />
-                </a>
                 <button
                   type="button"
                   onClick={() => abrirHistorial(cliente)}
@@ -254,6 +291,7 @@ export function ClientesApp({
                   type="button"
                   onClick={() => abrirEditar(cliente)}
                   aria-label={`Editar ${cliente.nombre_juridico}`}
+                  title="Editar cliente"
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 >
                   <Icon name="edit" size={18} />
@@ -451,7 +489,7 @@ export function ClientesApp({
                 <div className="grid grid-cols-2 gap-3">
                   <Card contentClassName="flex flex-col gap-0.5 p-3">
                     <p className="text-label-md text-on-surface-variant">
-                      Facturado ({historialData.facturas.length})
+                      Facturado ({facturasHistorial.length})
                     </p>
                     <p className="text-label-lg tabular-nums text-on-surface">
                       {formatUsd(historialData.facturas.reduce((acc, f) => acc + f.total_usd, 0))}
@@ -465,34 +503,65 @@ export function ClientesApp({
                   </Card>
                 </div>
 
-                {historialData.facturas.length === 0 ? (
+                {facturasHistorial.length > 0 && (
+                  <div
+                    role="group"
+                    aria-label="Filtrar por estado de pago"
+                    className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5"
+                  >
+                    {FILTROS_HISTORIAL.map((filtro) => (
+                      <button
+                        key={filtro.value}
+                        type="button"
+                        onClick={() => setHistorialFiltro(filtro.value)}
+                        aria-pressed={historialFiltro === filtro.value}
+                        className={cn(
+                          "h-9 shrink-0 rounded-full px-3.5 text-label-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                          historialFiltro === filtro.value
+                            ? "bg-primary text-on-primary"
+                            : "bg-surface-container text-on-surface-variant hover:text-on-surface"
+                        )}
+                      >
+                        {filtro.label} ({conteosHistorial[filtro.value]})
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {facturasHistorial.length === 0 ? (
                   <p className="py-6 text-center text-body-sm text-on-surface-variant">
                     Sin facturas emitidas en el período seleccionado.
+                  </p>
+                ) : facturasVisibles.length === 0 ? (
+                  <p className="py-6 text-center text-body-sm text-on-surface-variant">
+                    {historialFiltro === "pagadas"
+                      ? "Sin facturas pagadas en el período seleccionado."
+                      : "Sin facturas con saldo pendiente en el período seleccionado."}
                   </p>
                 ) : (
                   <Card contentClassName="p-0">
                     <ul className="divide-y divide-outline-variant">
-                      {historialData.facturas.map((factura) => (
+                      {facturasVisibles.map((factura) => (
                         <li key={factura.factura_id} className="flex items-center gap-3 px-4 py-2.5">
                           <div className="min-w-0 flex-1">
-                            <p className="text-label-md tabular-nums text-on-surface">
+                            <p className="truncate text-label-md tabular-nums text-on-surface">
                               {factura.numero_factura}
                             </p>
                             <p className="truncate text-body-sm tabular-nums text-on-surface-variant">
                               {formatFecha(factura.fecha_emision)} · Vence {formatFecha(factura.fecha_vencimiento)}
                             </p>
                           </div>
-                          <div className="shrink-0 text-right">
+                          <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+                            <EstadoChip estado={factura.estado} />
                             <p className="text-label-md tabular-nums text-on-surface">
                               {formatUsd(factura.total_usd)}
                             </p>
-                            {factura.saldo_usd > 0 && (
+                            {!esPagada(factura) && (
                               <p className="text-body-sm tabular-nums text-on-surface-variant">
                                 Saldo {formatUsd(factura.saldo_usd)}
                               </p>
                             )}
                           </div>
-                          <EstadoChip estado={factura.estado} className="shrink-0" />
                           <button
                             type="button"
                             onClick={() => setFacturaDetalle(factura)}

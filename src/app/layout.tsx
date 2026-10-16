@@ -5,7 +5,7 @@ import "./globals.css";
 
 // Nombre para los metadatos (estático). La marca dinámica de la empresa
 // (nombre + logo) se aplica en el shell `(app)` y en el login mediante `Brand`.
-const NOMBRE_APP = "Sistemas Kinetix";
+const NOMBRE_APP = "Kinetix POS";
 
 export const metadata: Metadata = {
   applicationName: NOMBRE_APP,
@@ -20,14 +20,14 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#f5f5f7",
+  themeColor: "#0000ff",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
       <body className="font-sans">
         <ToastProvider>{children}</ToastProvider>
         <PwaRegister />

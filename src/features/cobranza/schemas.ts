@@ -49,6 +49,65 @@ const fechaOpcionalSchema = z.union([
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
 ]);
 
+type PagoMetodoInput = {
+  metodo: MetodoPago;
+  tasa_cambio?: number;
+  referencia?: string;
+  correo?: string;
+};
+
+/** Reglas por método compartidas por `procesarPagoSchema` y `procesarPagoAsignadoSchema`. */
+function aplicarReglasMetodo(pago: PagoMetodoInput, ctx: z.RefinementCtx): void {
+  const bs = pago.metodo === "bs";
+  const transferenciaDigital = pago.metodo === "zelle" || pago.metodo === "binance";
+
+  if (bs) {
+    if (pago.tasa_cambio === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["tasa_cambio"],
+        message: "La tasa de cambio es obligatoria para pagos en bolívares",
+      });
+    } else if (pago.tasa_cambio <= 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["tasa_cambio"],
+        message: "La tasa de cambio debe ser mayor a 0",
+      });
+    }
+    if (pago.referencia === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["referencia"],
+        message: "La referencia es obligatoria para pagos en bolívares",
+      });
+    }
+  } else if (pago.tasa_cambio !== undefined) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["tasa_cambio"],
+      message: "No se admite tasa de cambio para este método de pago",
+    });
+  }
+
+  if (transferenciaDigital) {
+    if (pago.correo === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["correo"],
+        message: "El correo es obligatorio para este método de pago",
+      });
+    }
+    if (pago.referencia === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["referencia"],
+        message: "La referencia es obligatoria para este método de pago",
+      });
+    }
+  }
+}
+
 export const procesarPagoSchema = z
   .object({
     factura_id: z.string().uuid("Identificador de factura inválido"),
@@ -59,55 +118,43 @@ export const procesarPagoSchema = z
     correo: correoOpcionalSchema,
     fecha: fechaOpcionalSchema,
   })
+  .superRefine((pago, ctx) => aplicarReglasMetodo(pago, ctx));
+
+const asignacionSchema = z.object({
+  factura_id: z.string().uuid("Identificador de factura inválido"),
+  monto_usd: montoSchema,
+});
+
+/**
+ * Pago repartido entre varias facturas del mismo cliente. Los montos van en USD
+ * (moneda base): en pagos en Bs el excedente ya viene convertido.
+ */
+export const procesarPagoAsignadoSchema = z
+  .object({
+    metodo: metodoPagoSchema,
+    tasa_cambio: tasaCambioOpcionalSchema,
+    referencia: referenciaOpcionalSchema,
+    correo: correoOpcionalSchema,
+    fecha: fechaOpcionalSchema,
+    asignaciones: z
+      .array(asignacionSchema)
+      .min(1, "Debe indicar al menos una factura")
+      .max(50, "Demasiadas facturas en un solo pago"),
+  })
   .superRefine((pago, ctx) => {
-    const bs = pago.metodo === "bs";
-    const trasferenciaDigital = pago.metodo === "zelle" || pago.metodo === "binance";
+    aplicarReglasMetodo(pago, ctx);
 
-    if (bs) {
-      if (pago.tasa_cambio === undefined) {
+    const vistas = new Set<string>();
+    pago.asignaciones.forEach((asignacion, indice) => {
+      if (vistas.has(asignacion.factura_id)) {
         ctx.addIssue({
           code: "custom",
-          path: ["tasa_cambio"],
-          message: "La tasa de cambio es obligatoria para pagos en bolívares",
-        });
-      } else if (pago.tasa_cambio <= 0) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["tasa_cambio"],
-          message: "La tasa de cambio debe ser mayor a 0",
+          path: ["asignaciones", indice, "factura_id"],
+          message: "No se puede asignar el mismo pago dos veces a la misma factura",
         });
       }
-      if (pago.referencia === undefined) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["referencia"],
-          message: "La referencia es obligatoria para pagos en bolívares",
-        });
-      }
-    } else if (pago.tasa_cambio !== undefined) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["tasa_cambio"],
-        message: "No se admite tasa de cambio para este método de pago",
-      });
-    }
-
-    if (trasferenciaDigital) {
-      if (pago.correo === undefined) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["correo"],
-          message: "El correo es obligatorio para este método de pago",
-        });
-      }
-      if (pago.referencia === undefined) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["referencia"],
-          message: "La referencia es obligatoria para este método de pago",
-        });
-      }
-    }
+      vistas.add(asignacion.factura_id);
+    });
   });
 
 export const listarSaldoPendienteSchema = z.object({
@@ -137,6 +184,8 @@ export const estadoCuentaSchema = z
 export type SaldoPendiente = {
   factura_id: string;
   numero_factura: string;
+  cliente_id: string;
+  nombre_juridico: string;
   fecha_vencimiento: string;
   condicion: CondicionFactura;
   dias_credito: number;
@@ -167,6 +216,8 @@ export type UltimoCobro = {
 };
 
 export type ProcesarPagoInput = z.infer<typeof procesarPagoSchema>;
+export type ProcesarPagoAsignadoInput = z.infer<typeof procesarPagoAsignadoSchema>;
+export type AsignacionPago = z.infer<typeof asignacionSchema>;
 export type ListarSaldoPendienteInput = z.infer<typeof listarSaldoPendienteSchema>;
 export type EstadoCuentaInput = z.infer<typeof estadoCuentaSchema>;
 
@@ -179,4 +230,10 @@ export type PagoRegistrado = {
   factura_id: string;
   monto_usd: number;
   saldo_usd: number;
+};
+
+/** Resultado de un pago repartido entre varias facturas. */
+export type PagoAsignadoRegistrado = {
+  pagos: PagoRegistrado[];
+  total_usd: number;
 };

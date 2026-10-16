@@ -336,6 +336,32 @@ export interface Database {
           estado: string;
         };
       };
+      registrar_pago_asignado: {
+        Args: {
+          p_metodo: string;
+          p_tasa: number | null;
+          p_referencia: string | null;
+          p_correo: string | null;
+          p_fecha: string | null;
+          p_asignaciones: Json;
+        };
+        Returns: {
+          total_usd: number;
+          pagos: Array<{
+            pago_id: string;
+            factura_id: string;
+            monto_usd: number;
+            saldo_usd: number;
+            estado: string;
+          }>;
+        };
+      };
+      normalizar_referencia: {
+        Args: {
+          p_ref: string | null;
+        };
+        Returns: string | null;
+      };
       resumen_cartera: {
         Args: Record<PropertyKey, never>;
         Returns: {

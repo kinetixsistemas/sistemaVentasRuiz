@@ -1,8 +1,10 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
 import type {
+  AsignacionPago,
   ListarSaldoPendienteInput,
   ListarSaldoPendienteResult,
+  ProcesarPagoAsignadoInput,
   ProcesarPagoInput,
   SaldoPendiente,
   UltimoCobro,
@@ -12,7 +14,7 @@ type VistaFila = Database["public"]["Views"]["facturas_con_saldo"]["Row"];
 type PagoFila = Database["public"]["Tables"]["pagos"]["Row"];
 
 const COLUMNAS_SALDO =
-  "id, numero_factura, fecha_vencimiento, condicion, dias_credito, total_usd, total_pagado_usd, saldo_usd, estado, dias_mora";
+  "id, numero_factura, cliente_id, nombre_juridico, fecha_vencimiento, condicion, dias_credito, total_usd, total_pagado_usd, saldo_usd, estado, dias_mora";
 
 const COLUMNAS_COBRO =
   "id, fecha, metodo, monto_original, moneda, tasa_cambio, monto_usd, referencia, facturas(numero_factura, clientes(nombre_juridico))";
@@ -43,6 +45,8 @@ type SaldoSeleccion = Pick<
   VistaFila,
   | "id"
   | "numero_factura"
+  | "cliente_id"
+  | "nombre_juridico"
   | "fecha_vencimiento"
   | "condicion"
   | "dias_credito"
@@ -57,6 +61,8 @@ function mapearSaldo(fila: SaldoSeleccion): SaldoPendiente {
   return {
     factura_id: fila.id,
     numero_factura: fila.numero_factura,
+    cliente_id: fila.cliente_id,
+    nombre_juridico: fila.nombre_juridico,
     fecha_vencimiento: fila.fecha_vencimiento,
     condicion: fila.condicion,
     dias_credito: fila.dias_credito,
@@ -93,7 +99,40 @@ export async function procesarPagoRepo(input: ProcesarPagoInput): Promise<Result
   return data;
 }
 
-/** Lista facturas con estado "pendiente", priorizando las más atrasadas. */
+/** Resultado que devuelve la RPC `registrar_pago_asignado`. */
+export type ResultadoRegistrarPagoAsignado = {
+  total_usd: number;
+  pagos: Array<{
+    pago_id: string;
+    factura_id: string;
+    monto_usd: number;
+    saldo_usd: number;
+    estado: string;
+  }>;
+};
+
+/**
+ * Registra un pago repartido entre varias facturas de un mismo cliente mediante
+ * la RPC `registrar_pago_asignado` (valida saldos, sobrepago y referencia en BD).
+ */
+export async function procesarPagoAsignadoRepo(
+  input: ProcesarPagoAsignadoInput
+): Promise<ResultadoRegistrarPagoAsignado> {
+  const supabase = await createSupabaseServerClient();
+  const asignaciones: AsignacionPago[] = input.asignaciones;
+  const { data, error } = await supabase.rpc("registrar_pago_asignado", {
+    p_metodo: input.metodo,
+    p_tasa: input.tasa_cambio ?? null,
+    p_referencia: input.referencia ?? null,
+    p_correo: input.correo ?? null,
+    p_fecha: input.fecha ?? null,
+    p_asignaciones: asignaciones,
+  });
+  if (error) throw error;
+  return data;
+}
+
+/** Lista facturas con saldo, priorizando las más atrasadas. */
 export async function listarSaldoPendienteRepo(
   input: ListarSaldoPendienteInput
 ): Promise<ListarSaldoPendienteResult> {

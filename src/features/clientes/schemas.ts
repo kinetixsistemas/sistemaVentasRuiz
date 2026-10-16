@@ -102,7 +102,10 @@ export type Cliente = {
   vendedor: string;
 };
 
+/** Cliente con el número de facturas abiertas, para el listado principal. */
+export type ClienteConCartera = Cliente & { facturas_pendientes: number };
+
 export type CrearClienteInput = z.infer<typeof crearClienteSchema>;
 export type ActualizarClienteInput = z.infer<typeof actualizarClienteSchema>;
 export type ListarClientesInput = z.infer<typeof listarClientesSchema>;
-export type ListarClientesResult = { clientes: Cliente[]; total: number };
+export type ListarClientesResult = { clientes: ClienteConCartera[]; total: number };

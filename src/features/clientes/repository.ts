@@ -1,9 +1,18 @@
 import { escaparFiltroPostgrest } from "@/lib/postgrest";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
-import type { ActualizarClienteInput, Cliente, CrearClienteInput } from "./schemas";
+import type {
+  ActualizarClienteInput,
+  Cliente,
+  ClienteConCartera,
+  CrearClienteInput,
+} from "./schemas";
 
 type ClienteFila = Database["public"]["Tables"]["clientes"]["Row"];
+type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+/** Saldo que la app considera ya cancelado (misma tolerancia que cobranza). */
+const TOLERANCIA_SALDO = 0.005;
 
 const COLUMNAS =
   "id, rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor";
@@ -37,7 +46,7 @@ export async function listarClientesRepo(
   busqueda: string | undefined,
   pagina: number,
   porPagina: number
-) {
+): Promise<{ clientes: ClienteConCartera[]; total: number }> {
   const supabase = await createSupabaseServerClient();
 
   const consulta = busqueda
@@ -56,10 +65,40 @@ export async function listarClientesRepo(
 
   if (error) throw error;
 
+  const clientes = (data ?? []).map(mapearCliente);
+  const pendientes = await contarFacturasPendientes(
+    supabase,
+    clientes.map((c) => c.id)
+  );
+
   return {
-    clientes: (data ?? []).map(mapearCliente),
+    clientes: clientes.map((c) => ({
+      ...c,
+      facturas_pendientes: pendientes.get(c.id) ?? 0,
+    })),
     total: count ?? 0,
   };
+}
+
+/** Cuenta, por cliente, las facturas con saldo pendiente en la página actual. */
+async function contarFacturasPendientes(
+  supabase: SupabaseServerClient,
+  clienteIds: string[]
+): Promise<Map<string, number>> {
+  const conteo = new Map<string, number>();
+  if (clienteIds.length === 0) return conteo;
+
+  const { data, error } = await supabase
+    .from("facturas_con_saldo")
+    .select("cliente_id")
+    .in("cliente_id", clienteIds)
+    .gt("saldo_usd", TOLERANCIA_SALDO);
+  if (error) throw error;
+
+  for (const fila of data ?? []) {
+    conteo.set(fila.cliente_id, (conteo.get(fila.cliente_id) ?? 0) + 1);
+  }
+  return conteo;
 }
 
 export async function obtenerClienteRepo(id: string): Promise<Cliente> {

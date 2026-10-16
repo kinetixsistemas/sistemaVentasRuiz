@@ -1,6 +1,7 @@
 import {
   listarSaldoPendienteRepo,
   obtenerCobroPorIdRepo,
+  procesarPagoAsignadoRepo,
   procesarPagoRepo,
   ultimosPagosRepo,
 } from "./repository";
@@ -8,7 +9,9 @@ import { fromPostgresError, okResult, type ActionResult } from "@/lib/result";
 import type {
   ListarSaldoPendienteInput,
   ListarSaldoPendienteResult,
+  PagoAsignadoRegistrado,
   PagoRegistrado,
+  ProcesarPagoAsignadoInput,
   ProcesarPagoInput,
   UltimoCobro,
 } from "./schemas";
@@ -26,6 +29,26 @@ export async function procesarPagoService(
       monto_usd: resultado.monto_usd,
       saldo_usd: resultado.saldo_usd,
     });
+  } catch (error) {
+    return fromPostgresError(error);
+  }
+}
+
+/** Registra un pago repartido entre varias facturas y devuelve los cobros creados. */
+export async function procesarPagoAsignadoService(
+  input: ProcesarPagoAsignadoInput
+): Promise<ActionResult<PagoAsignadoRegistrado>> {
+  try {
+    const resultado = await procesarPagoAsignadoRepo(input);
+    const pagos = await Promise.all(
+      resultado.pagos.map(async (fila) => ({
+        pago: await obtenerCobroPorIdRepo(fila.pago_id),
+        factura_id: fila.factura_id,
+        monto_usd: fila.monto_usd,
+        saldo_usd: fila.saldo_usd,
+      }))
+    );
+    return okResult({ pagos, total_usd: resultado.total_usd });
   } catch (error) {
     return fromPostgresError(error);
   }

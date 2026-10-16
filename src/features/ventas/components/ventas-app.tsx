@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
-import { EstadoChip, estadoFacturaLabel } from "@/components/ui/estado-chip";
+import { estadoFacturaLabel } from "@/components/ui/estado-chip";
 import { Icon } from "@/components/ui/icon";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
@@ -22,8 +22,9 @@ import { Select, type SelectOption } from "@/components/ui/select";
 import { StatCard } from "@/components/ui/stat-card";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/components/ui/cn";
-import { formatFecha, formatUsd, labelCondicion } from "@/components/ui/format";
+import { formatUsd } from "@/components/ui/format";
 import { FacturaDetalleModal } from "./factura-detalle-modal";
+import { FilaFactura } from "./factura-fila";
 
 type ItemForm = { producto_id: string; cantidad: string; precio: string; stock: number };
 type FiltroEstado = EstadoFactura | "todas";
@@ -396,44 +397,24 @@ export function VentasApp({
         <Card contentClassName="p-0">
           <ul className="divide-y divide-outline-variant">
             {facturasLocales.map((factura) => (
-              <li key={factura.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-surface-container text-on-surface-variant">
-                  <Icon name="receipt_long" size={20} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="shrink-0 text-label-lg tabular-nums text-on-surface">
-                      {factura.numero_factura}
-                    </p>
-                    <EstadoChip estado={factura.estado} className="hidden sm:inline-flex" />
-                  </div>
-                  <p className="truncate text-body-sm text-on-surface-variant">
-                    {factura.nombre_juridico} · {formatFecha(factura.fecha_emision)} · {labelCondicion(factura.condicion)}
-                    {factura.saldo_usd > 0 && (
-                      <span className="tabular-nums"> · Saldo {formatUsd(factura.saldo_usd)}</span>
-                    )}
-                  </p>
-                </div>
-                {factura.saldo_usd > 0 && (
-                  <Button
-                    href={`/cobranza?pedido=${factura.id}`}
-                    size="sm"
-                    icon="payments"
-                    aria-label={`Cobrar factura ${factura.numero_factura}`}
-                    className="shrink-0"
-                  >
-                    <span className="hidden sm:inline">Cobrar</span>
-                  </Button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => abrirDetalle(factura)}
-                  aria-label={`Ver detalle de factura ${factura.numero_factura}`}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                >
-                  <Icon name="chevron_right" size={20} />
-                </button>
-              </li>
+              <FilaFactura
+                key={factura.id}
+                factura={factura}
+                onVerDetalle={() => abrirDetalle(factura)}
+                accionCobro={
+                  factura.saldo_usd > 0 ? (
+                    <Button
+                      href={`/cobranza?pedido=${factura.id}`}
+                      size="sm"
+                      icon="payments"
+                      aria-label={`Cobrar factura ${factura.numero_factura}`}
+                      className="shrink-0"
+                    >
+                      <span className="hidden sm:inline">Cobrar</span>
+                    </Button>
+                  ) : undefined
+                }
+              />
             ))}
           </ul>
         </Card>

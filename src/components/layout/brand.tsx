@@ -3,7 +3,7 @@ import { cn } from "@/components/ui/cn";
 import { Icon } from "@/components/ui/icon";
 
 /** Nombre de respaldo cuando la empresa aún no tiene datos configurados. */
-export const NOMBRE_APP = "Sistemas Kinetix";
+export const NOMBRE_APP = "Kinetix POS";
 
 export function Brand({
   nombre,

@@ -13,16 +13,19 @@ import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { estadoFacturaLabel } from "@/components/ui/estado-chip";
+import { FiltroFechas } from "@/components/ui/filtro-fechas";
 import { Icon } from "@/components/ui/icon";
 import { InlineAlert } from "@/components/ui/inline-alert";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { Pagination } from "@/components/ui/pagination";
 import { SearchInput } from "@/components/ui/search-input";
 import { Select, type SelectOption } from "@/components/ui/select";
 import { StatCard } from "@/components/ui/stat-card";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/components/ui/cn";
 import { formatUsd } from "@/components/ui/format";
+import { POR_PAGINA } from "@/lib/pagination";
 import { FacturaDetalleModal } from "./factura-detalle-modal";
 import { FilaFactura } from "./factura-fila";
 
@@ -82,6 +85,9 @@ function etiquetaPeriodo(periodo: Periodo): string {
 
 export function VentasApp({
   facturas,
+  totalFacturas: totalInicial,
+  paginaInicial,
+  rangoInicial,
   resumen,
   clientes,
   productos,
@@ -92,6 +98,9 @@ export function VentasApp({
   errorMensaje,
 }: {
   facturas: FacturaConSaldo[];
+  totalFacturas: number;
+  paginaInicial: number;
+  rangoInicial: { desde: string; hasta: string };
   resumen?: ResumenCartera | null;
   clientes: Cliente[];
   productos: Producto[];
@@ -107,8 +116,12 @@ export function VentasApp({
   const toast = useToast();
 
   const [facturasLocales, setFacturasLocales] = useState<FacturaConSaldo[]>(facturas);
+  const [totalFacturas, setTotalFacturas] = useState(totalInicial);
+  const [pagina, setPagina] = useState(paginaInicial);
   const [busqueda, setBusqueda] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState<FiltroEstado>("todas");
+  const [fechaDesde, setFechaDesde] = useState(rangoInicial.desde);
+  const [fechaHasta, setFechaHasta] = useState(rangoInicial.hasta);
   const [buscando, startBuscar] = useTransition();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [modalNueva, setModalNueva] = useState(abrirNueva);
@@ -167,18 +180,45 @@ export function VentasApp({
   const totalFacturasPendiente = facturasLocales.reduce((acc, f) => acc + f.saldo_usd, 0);
   const facturasAbiertas = resumen?.facturas_abiertas ?? facturasLocales.filter((f) => f.saldo_usd > 0).length;
   const porCobrar = resumen ? resumen.por_cobrar_usd : totalFacturasPendiente;
-  const filtrando = estadoFiltro !== "todas" || busqueda.trim() !== "";
+  const filtrando =
+    estadoFiltro !== "todas" || busqueda.trim() !== "" || fechaDesde !== "" || fechaHasta !== "";
   const esMesActual = periodo.desde === periodoActual.desde;
 
-  function consultar(estado: FiltroEstado, texto: string) {
+  /** Refleja la página y el rango en la URL para conservarlos al recargar. */
+  function sincronizarUrl(paginaNueva: number, desde: string, hasta: string) {
+    const params = new URLSearchParams();
+    if (paginaNueva > 1) params.set("pagina", String(paginaNueva));
+    if (desde) params.set("desde", desde);
+    if (hasta) params.set("hasta", hasta);
+    if (abrirNueva) params.set("nueva", "1");
+    const query = params.toString();
+    window.history.replaceState(null, "", `/ventas${query ? `?${query}` : ""}`);
+  }
+
+  function consultar(
+    paginaNueva: number,
+    estado: FiltroEstado,
+    texto: string,
+    desde: string,
+    hasta: string
+  ) {
     startBuscar(async () => {
       const res = await listarFacturas({
         estado,
-        limite: 50,
+        pagina: paginaNueva,
+        porPagina: POR_PAGINA,
         busqueda: texto.trim() || undefined,
+        fecha_desde: desde || undefined,
+        fecha_hasta: hasta || undefined,
       });
-      if (res.ok) setFacturasLocales(res.data);
-      else toast.error(res.error.message);
+      if (res.ok) {
+        setFacturasLocales(res.data.facturas);
+        setTotalFacturas(res.data.total);
+        setPagina(paginaNueva);
+        sincronizarUrl(paginaNueva, desde, hasta);
+      } else {
+        toast.error(res.error.message);
+      }
     });
   }
 
@@ -186,21 +226,35 @@ export function VentasApp({
   function cambiarBusqueda(valor: string) {
     setBusqueda(valor);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => consultar(estadoFiltro, valor), 300);
+    debounceRef.current = setTimeout(() => consultar(1, estadoFiltro, valor, fechaDesde, fechaHasta), 300);
   }
 
   function cambiarFiltroEstado(nuevo: FiltroEstado) {
     if (nuevo === estadoFiltro) return;
     setEstadoFiltro(nuevo);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    consultar(nuevo, busqueda);
+    consultar(1, nuevo, busqueda, fechaDesde, fechaHasta);
+  }
+
+  function aplicarRango(desde: string, hasta: string) {
+    setFechaDesde(desde);
+    setFechaHasta(hasta);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    consultar(1, estadoFiltro, busqueda, desde, hasta);
   }
 
   function limpiarFiltros() {
     setBusqueda("");
     setEstadoFiltro("todas");
+    setFechaDesde("");
+    setFechaHasta("");
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    consultar("todas", "");
+    consultar(1, "todas", "", "", "");
+  }
+
+  function cambiarPagina(nueva: number) {
+    if (nueva < 1) return;
+    consultar(nueva, estadoFiltro, busqueda, fechaDesde, fechaHasta);
   }
 
   function cambiarMes(delta: number) {
@@ -266,9 +320,18 @@ export function VentasApp({
       setDescuento({ monto: "", pct: "", fuente: "monto" });
       toast.success("Factura creada y stock descontado");
 
-      // La factura recién creada es la más reciente: se antepone a la lista
-      // sin volver a consultar el listado completo.
-      setFacturasLocales((prev) => [res.data.factura, ...prev].slice(0, 50));
+      // La factura recién creada es la más reciente: si estamos en la primera
+      // página se antepone sin recargar; si no, se salta a la página 1.
+      if (pagina === 1 && estadoFiltro === "todas" && busqueda.trim() === "" && !fechaDesde && !fechaHasta) {
+        setFacturasLocales((prev) => [res.data.factura, ...prev].slice(0, POR_PAGINA));
+        setTotalFacturas((t) => t + 1);
+      } else {
+        setEstadoFiltro("todas");
+        setBusqueda("");
+        setFechaDesde("");
+        setFechaHasta("");
+        consultar(1, "todas", "", "", "");
+      }
     });
   }
 
@@ -285,7 +348,7 @@ export function VentasApp({
           placeholder="Buscar factura, cliente o RIF…"
           aria-label="Buscar factura"
         />
-        <Button onClick={() => setModalNueva(true)} icon="add" className="shrink-0">
+        <Button onClick={() => setModalNueva(true)} icon="add" className="shrink-0" aria-label="Nueva venta">
           <span className="hidden sm:inline">Venta</span>
         </Button>
       </div>
@@ -314,6 +377,14 @@ export function VentasApp({
           </button>
         ))}
       </div>
+
+      <FiltroFechas
+        desde={fechaDesde}
+        hasta={fechaHasta}
+        onAplicar={aplicarRango}
+        onLimpiar={() => aplicarRango("", "")}
+        cargando={buscando}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <StatCard
@@ -374,9 +445,7 @@ export function VentasApp({
         </div>
       </section>
 
-      {buscando ? (
-        <p className="py-6 text-center text-body-sm text-on-surface-variant">Buscando…</p>
-      ) : facturasLocales.length === 0 ? (
+      {facturasLocales.length === 0 && !buscando ? (
         <EmptyState
           icon="receipt_long"
           title={filtrando ? "Sin resultados" : "Sin facturas"}
@@ -394,30 +463,39 @@ export function VentasApp({
           }
         />
       ) : (
-        <Card contentClassName="p-0">
-          <ul className="divide-y divide-outline-variant">
-            {facturasLocales.map((factura) => (
-              <FilaFactura
-                key={factura.id}
-                factura={factura}
-                onVerDetalle={() => abrirDetalle(factura)}
-                accionCobro={
-                  factura.saldo_usd > 0 ? (
-                    <Button
-                      href={`/cobranza?pedido=${factura.id}`}
-                      size="sm"
-                      icon="payments"
-                      aria-label={`Cobrar factura ${factura.numero_factura}`}
-                      className="shrink-0"
-                    >
-                      <span className="hidden sm:inline">Cobrar</span>
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ))}
-          </ul>
-        </Card>
+        <>
+          <Card contentClassName={cn("p-0 transition-opacity", buscando && "pointer-events-none opacity-60")}>
+            <ul className="divide-y divide-outline-variant">
+              {facturasLocales.map((factura) => (
+                <FilaFactura
+                  key={factura.id}
+                  factura={factura}
+                  onVerDetalle={() => abrirDetalle(factura)}
+                  accionCobro={
+                    factura.saldo_usd > 0 ? (
+                      <Button
+                        href={`/cobranza?pedido=${factura.id}`}
+                        size="sm"
+                        icon="payments"
+                        aria-label={`Cobrar factura ${factura.numero_factura}`}
+                        className="shrink-0"
+                      >
+                        <span className="hidden sm:inline">Cobrar</span>
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ))}
+            </ul>
+          </Card>
+          <Pagination
+            pagina={pagina}
+            total={totalFacturas}
+            porPagina={POR_PAGINA}
+            onCambiar={cambiarPagina}
+            cargando={buscando}
+          />
+        </>
       )}
 
       <Modal

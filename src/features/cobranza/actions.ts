@@ -6,6 +6,7 @@ import { fromZodError, type ActionResult } from "@/lib/result";
 import { TAG_CLIENTES, TAG_COBRANZA, TAG_FACTURAS } from "@/lib/tags";
 import {
   listarSaldoPendienteService,
+  obtenerSaldoPendienteService,
   procesarPagoAsignadoService,
   procesarPagoService,
   ultimosPagosService,
@@ -13,12 +14,14 @@ import {
 import {
   estadoCuentaSchema,
   listarSaldoPendienteSchema,
+  obtenerSaldoPendienteSchema,
   procesarPagoAsignadoSchema,
   procesarPagoSchema,
   ultimosPagosSchema,
   type ListarSaldoPendienteResult,
   type PagoAsignadoRegistrado,
   type PagoRegistrado,
+  type SaldoPendiente,
   type UltimoCobro,
 } from "./schemas";
 import { obtenerEstadoCuentaService, type EstadoCuenta } from "./estado-cuenta";
@@ -68,6 +71,16 @@ export async function ultimosPagos(input?: unknown): Promise<ActionResult<Ultimo
   const parsed = ultimosPagosSchema.safeParse(input ?? {});
   if (!parsed.success) return fromZodError<UltimoCobro[]>(parsed.error);
   return ultimosPagosService(parsed.data.limite);
+}
+
+/** Una factura con saldo por su id; usada por el deep-link `?pedido=<facturaId>`. */
+export async function obtenerSaldoPendiente(
+  input: unknown
+): Promise<ActionResult<SaldoPendiente | null>> {
+  await requireUser();
+  const parsed = obtenerSaldoPendienteSchema.safeParse(input);
+  if (!parsed.success) return fromZodError<SaldoPendiente | null>(parsed.error);
+  return obtenerSaldoPendienteService(parsed.data.factura_id);
 }
 
 /** Estado de cuenta de un cliente (historial), con rango de emisión opcional. */

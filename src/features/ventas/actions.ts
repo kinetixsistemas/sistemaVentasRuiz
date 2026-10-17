@@ -12,6 +12,7 @@ import {
   resumenVentasSchema,
   type FacturaConSaldo,
   type FacturaDetalle,
+  type ListarFacturasResult,
   type ResumenCartera,
   type ResumenVentas,
 } from "./schemas";
@@ -34,10 +35,10 @@ export async function crearFactura(
   return result;
 }
 
-export async function listarFacturas(input?: unknown): Promise<ActionResult<FacturaConSaldo[]>> {
+export async function listarFacturas(input?: unknown): Promise<ActionResult<ListarFacturasResult>> {
   await requireUser();
   const parsed = listarFacturasSchema.safeParse(input ?? {});
-  if (!parsed.success) return fromZodError<FacturaConSaldo[]>(parsed.error);
+  if (!parsed.success) return fromZodError<ListarFacturasResult>(parsed.error);
   return listarFacturasService(parsed.data);
 }
 

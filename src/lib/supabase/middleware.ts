@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database";
 import { getSupabaseEnv } from "./env";
+import { SESSION_COOKIE_OPTIONS } from "./cookie-options";
 
 /**
  * Refresca la sesión en cada petición y protege las rutas privadas.
@@ -18,6 +19,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(url, key, {
+    cookieOptions: SESSION_COOKIE_OPTIONS,
     cookies: {
       getAll() {
         return request.cookies.getAll();

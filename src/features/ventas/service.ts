@@ -18,6 +18,7 @@ import type {
   FacturaConSaldo,
   FacturaDetalle,
   ListarFacturasInput,
+  ListarFacturasResult,
   ResumenCartera,
   ResumenVentas,
   ResumenVentasInput,
@@ -39,10 +40,10 @@ export async function crearFacturaService(
 
 export async function listarFacturasService(
   input: ListarFacturasInput
-): Promise<ActionResult<FacturaConSaldo[]>> {
+): Promise<ActionResult<ListarFacturasResult>> {
   try {
-    const facturas = await listarFacturasRepo(input);
-    return okResult(facturas);
+    const resultado = await listarFacturasRepo(input);
+    return okResult(resultado);
   } catch (error) {
     return fromPostgresError(error);
   }

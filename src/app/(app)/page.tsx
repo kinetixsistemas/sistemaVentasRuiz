@@ -139,7 +139,7 @@ export default async function HomePage() {
   // recientes y 10 cobros. Antes se descargaba todo el histórico y 100 productos.
   const [resumenRes, facturasRes, pagosRes, empresaRes] = await Promise.all([
     resumenCartera(),
-    listarFacturas({ estado: "todas", limite: 5 }),
+    listarFacturas({ estado: "todas", porPagina: 5 }),
     ultimosPagos(),
     obtenerEmpresaService(),
   ]);
@@ -148,7 +148,7 @@ export default async function HomePage() {
   const stockRes = await listarStockBajo({ umbral: umbralStock, limite: 6 });
 
   const resumen = resumenRes.ok ? resumenRes.data : null;
-  const facturas = facturasRes.ok ? facturasRes.data : [];
+  const facturas = facturasRes.ok ? facturasRes.data.facturas : [];
   const cobros = pagosRes.ok ? pagosRes.data : [];
   const productos = stockRes.ok ? stockRes.data : [];
 

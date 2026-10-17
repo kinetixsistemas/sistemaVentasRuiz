@@ -21,7 +21,7 @@ export function Brand({
   const titulo = nombre?.trim() || NOMBRE_APP;
 
   return (
-    <Link href="/" className={cn("flex items-center gap-3", className)} aria-label={titulo}>
+    <Link href="/" className={cn("flex items-center gap-3", className)}>
       {logoUrl ? (
         // Logotipo ya optimizado servido desde Supabase Storage (images.unoptimized).
         // eslint-disable-next-line @next/next/no-img-element

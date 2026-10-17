@@ -8,6 +8,7 @@ import type {
   FacturaDetalle,
   ItemFactura,
   ListarFacturasInput,
+  ListarFacturasResult,
   PagoFactura,
   ResumenCartera,
   ResumenVentas,
@@ -79,10 +80,10 @@ export async function crearFacturaRepo(input: CrearFacturaInput): Promise<string
   return data;
 }
 
-export async function listarFacturasRepo(input: ListarFacturasInput): Promise<FacturaConSaldo[]> {
+export async function listarFacturasRepo(input: ListarFacturasInput): Promise<ListarFacturasResult> {
   const supabase = await createSupabaseServerClient();
 
-  let consulta = supabase.from("facturas_con_saldo").select(COLUMNAS_VISTA);
+  let consulta = supabase.from("facturas_con_saldo").select(COLUMNAS_VISTA, { count: "exact" });
 
   if (input.cliente_id) consulta = consulta.eq("cliente_id", input.cliente_id);
   if (input.fecha_desde) consulta = consulta.gte("fecha_emision", input.fecha_desde);
@@ -97,12 +98,16 @@ export async function listarFacturasRepo(input: ListarFacturasInput): Promise<Fa
     );
   }
 
-  consulta = consulta.order("fecha_emision", { ascending: false });
-  if (input.limite) consulta = consulta.limit(input.limite);
+  const desde = (input.pagina - 1) * input.porPagina;
+  const { data, error, count } = await consulta
+    .order("fecha_emision", { ascending: false })
+    .range(desde, desde + input.porPagina - 1);
 
-  const { data, error } = await consulta;
   if (error) throw error;
-  return (data ?? []).map(mapearFacturaConSaldo);
+  return {
+    facturas: (data ?? []).map(mapearFacturaConSaldo),
+    total: count ?? 0,
+  };
 }
 
 /** Una factura con su saldo (para reflejarla en la lista sin recargarla). */

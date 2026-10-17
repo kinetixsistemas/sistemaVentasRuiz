@@ -157,10 +157,21 @@ export const procesarPagoAsignadoSchema = z
     });
   });
 
-export const listarSaldoPendienteSchema = z.object({
-  cliente_id: z.string().uuid("Identificador de cliente inválido").optional(),
-  pagina: z.coerce.number().int().min(1, "Página inválida").default(1),
-  porPagina: z.coerce.number().int().min(1).max(100, "Máximo 100 por página").default(20),
+export const listarSaldoPendienteSchema = z
+  .object({
+    cliente_id: z.string().uuid("Identificador de cliente inválido").optional(),
+    fecha_desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").optional(),
+    fecha_hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").optional(),
+    pagina: z.coerce.number().int().min(1, "Página inválida").default(1),
+    porPagina: z.coerce.number().int().min(1).max(100, "Máximo 100 por página").default(20),
+  })
+  .refine(
+    (v) => !v.fecha_desde || !v.fecha_hasta || v.fecha_desde <= v.fecha_hasta,
+    "El rango de fechas no es válido"
+  );
+
+export const obtenerSaldoPendienteSchema = z.object({
+  factura_id: z.string().uuid("Identificador de factura inválido"),
 });
 
 export const ultimosPagosSchema = z.object({
@@ -219,6 +230,7 @@ export type ProcesarPagoInput = z.infer<typeof procesarPagoSchema>;
 export type ProcesarPagoAsignadoInput = z.infer<typeof procesarPagoAsignadoSchema>;
 export type AsignacionPago = z.infer<typeof asignacionSchema>;
 export type ListarSaldoPendienteInput = z.infer<typeof listarSaldoPendienteSchema>;
+export type ObtenerSaldoPendienteInput = z.infer<typeof obtenerSaldoPendienteSchema>;
 export type EstadoCuentaInput = z.infer<typeof estadoCuentaSchema>;
 
 /**

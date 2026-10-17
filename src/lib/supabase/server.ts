@@ -4,6 +4,7 @@ import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { getSupabaseEnv } from "./env";
+import { SESSION_COOKIE_OPTIONS } from "./cookie-options";
 
 /**
  * Cliente de Supabase para Server Components, Server Actions y Route Handlers.
@@ -22,6 +23,7 @@ export const createSupabaseServerClient = cache(
     const { url, key } = getSupabaseEnv();
 
     return createServerClient<Database>(url, key, {
+      cookieOptions: SESSION_COOKIE_OPTIONS,
       cookies: {
         getAll() {
           return cookieStore.getAll();

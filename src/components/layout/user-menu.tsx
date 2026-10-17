@@ -17,6 +17,16 @@ function iniciales(email?: string): string {
   return parteLocal.slice(0, 2).toUpperCase();
 }
 
+/**
+ * Borra las cachés del service worker al cerrar sesión para no dejar datos ni
+ * assets de la sesión anterior en el dispositivo. No se espera el resultado:
+ * el envío del formulario (logout) continúa en paralelo.
+ */
+function limpiarCaches() {
+  if (typeof caches === "undefined") return;
+  void caches.keys().then((claves) => Promise.all(claves.map((clave) => caches.delete(clave))));
+}
+
 /** Avatar con menú desplegable (Configuración / Cerrar sesión). */
 export function UserMenu({ email, logoutAction, className }: UserMenuProps) {
   const [open, setOpen] = useState(false);
@@ -48,7 +58,7 @@ export function UserMenu({ email, logoutAction, className }: UserMenuProps) {
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label="Menú de usuario"
+        aria-label={`Menú de usuario (${iniciales(email)})`}
         aria-expanded={open}
         aria-haspopup="menu"
         className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary text-label-lg transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
@@ -61,7 +71,7 @@ export function UserMenu({ email, logoutAction, className }: UserMenuProps) {
           className="absolute right-0 top-12 z-50 w-56 rounded-xl bg-surface-container-lowest/95 p-2 shadow-overlay backdrop-blur-md animate-fade-in"
         >
           <p className="truncate px-3 py-2 text-body-sm text-on-surface-variant">{email}</p>
-          <form action={logoutAction}>
+          <form action={logoutAction} onSubmit={limpiarCaches}>
             <button
               type="submit"
               role="menuitem"

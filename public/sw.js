@@ -11,9 +11,18 @@
  *   precacheada. Si tampoco existe, SIEMPRE se devuelve una Response válida:
  *   `respondWith` con `undefined` lanza "Failed to convert value to 'Response'".
  */
-const CACHE_SHELL = "pymegestion-shell-v2";
+const CACHE_SHELL = "kinetix-shell-v1";
 const OFFLINE_URL = "/offline";
-const PRECACHE_URLS = ["/", OFFLINE_URL];
+const PRECACHE_URLS = [
+  "/",
+  OFFLINE_URL,
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/kinetixLogo.webp",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/maskable-512.png",
+];
 const STATIC_PREFIX = "/_next/static/";
 
 function respuestaSinConexion() {

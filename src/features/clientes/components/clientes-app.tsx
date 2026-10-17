@@ -23,10 +23,12 @@ import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/ui/modal";
+import { Pagination } from "@/components/ui/pagination";
 import { SearchInput } from "@/components/ui/search-input";
 import { useToast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
 import { fechaHoyISO } from "@/lib/dates";
+import { POR_PAGINA } from "@/lib/pagination";
 
 const FORM_VACIO = {
   rif: "",
@@ -73,11 +75,14 @@ function insertarOrdenado(lista: ClienteConCartera[], cliente: ClienteConCartera
 export function ClientesApp({
   datos,
   busquedaInicial = "",
+  paginaInicial = 1,
   errorMensaje,
 }: {
   datos: ListarClientesResult;
   /** Búsqueda leída de `?q=` para conservarla al recargar o compartir. */
   busquedaInicial?: string;
+  /** Página leída de `?pagina=` para conservarla al recargar o compartir. */
+  paginaInicial?: number;
   errorMensaje?: string;
 }) {
   const toast = useToast();
@@ -85,6 +90,7 @@ export function ClientesApp({
   const [lista, setLista] = useState<ClienteConCartera[]>(datos.clientes);
   const [total, setTotal] = useState(datos.total);
   const [busqueda, setBusqueda] = useState(busquedaInicial);
+  const [pagina, setPagina] = useState(paginaInicial);
   const [cargando, startCargar] = useTransition();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -138,11 +144,24 @@ export function ClientesApp({
     cargarHistorial(cliente.id, desde, hasta);
   }
 
-  async function recargar(busca?: string) {
-    const res = await listarClientes({ busqueda: busca ?? busqueda, porPagina: 100 });
+  /** Refleja búsqueda y página en la URL para conservarlas al recargar. */
+  function sincronizarUrl(q: string, paginaNueva: number) {
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q);
+    if (paginaNueva > 1) params.set("pagina", String(paginaNueva));
+    const query = params.toString();
+    window.history.replaceState(null, "", `/clientes${query ? `?${query}` : ""}`);
+  }
+
+  async function recargar(busca?: string, paginaNueva?: number) {
+    const q = busca ?? busqueda;
+    const p = paginaNueva ?? pagina;
+    const res = await listarClientes({ busqueda: q || undefined, pagina: p, porPagina: POR_PAGINA });
     if (res.ok) {
       setLista(res.data.clientes);
       setTotal(res.data.total);
+      setPagina(p);
+      sincronizarUrl(q, p);
     } else {
       toast.error(res.error.message);
     }
@@ -150,14 +169,20 @@ export function ClientesApp({
 
   function cambiarBusqueda(valor: string) {
     setBusqueda(valor);
-    const query = valor.trim() ? `?q=${encodeURIComponent(valor)}` : "";
-    window.history.replaceState(null, "", `/clientes${query}`);
+    sincronizarUrl(valor, 1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       startCargar(async () => {
-        await recargar(valor);
+        await recargar(valor, 1);
       });
     }, 300);
+  }
+
+  function cambiarPagina(nueva: number) {
+    if (nueva < 1) return;
+    startCargar(async () => {
+      await recargar(busqueda, nueva);
+    });
   }
 
   function abrirNuevo() {
@@ -226,6 +251,7 @@ export function ClientesApp({
       if (res.ok) {
         toast.success("Cliente eliminado");
         setLista((prev) => prev.filter((c) => c.id !== eliminar.id));
+        setTotal((t) => Math.max(0, t - 1));
         setEliminar(null);
       } else {
         toast.error(res.error.message);
@@ -243,7 +269,7 @@ export function ClientesApp({
           placeholder="Buscar por nombre, RIF o teléfono…"
           aria-label="Buscar cliente"
         />
-        <Button onClick={abrirNuevo} icon="add" className="shrink-0">
+        <Button onClick={abrirNuevo} icon="add" className="shrink-0" aria-label="Nuevo cliente">
           <span className="hidden sm:inline">Nuevo</span>
         </Button>
       </div>
@@ -303,6 +329,16 @@ export function ClientesApp({
             {total} cliente{total === 1 ? "" : "s"}
           </p>
         </Card>
+      )}
+
+      {!cargando && lista.length > 0 && (
+        <Pagination
+          pagina={pagina}
+          total={total}
+          porPagina={POR_PAGINA}
+          onCambiar={cambiarPagina}
+          cargando={cargando}
+        />
       )}
 
       <Modal

@@ -146,6 +146,8 @@ export async function listarSaldoPendienteRepo(
     .gt("saldo_usd", 0.005);
 
   if (input.cliente_id) consulta = consulta.eq("cliente_id", input.cliente_id);
+  if (input.fecha_desde) consulta = consulta.gte("fecha_emision", input.fecha_desde);
+  if (input.fecha_hasta) consulta = consulta.lte("fecha_emision", input.fecha_hasta);
 
   const desde = (input.pagina - 1) * input.porPagina;
   const { data, error, count } = await consulta
@@ -156,6 +158,19 @@ export async function listarSaldoPendienteRepo(
   const facturas = (data ?? []).map(mapearSaldo);
 
   return { facturas, total: count ?? 0 };
+}
+
+/** Una factura con saldo por su id (deep-link `?pedido=<facturaId>`). */
+export async function obtenerSaldoPendienteRepo(facturaId: string): Promise<SaldoPendiente | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("facturas_con_saldo")
+    .select(COLUMNAS_SALDO)
+    .eq("id", facturaId)
+    .gt("saldo_usd", 0.005)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapearSaldo(data as SaldoSeleccion) : null;
 }
 
 /** Últimos cobros con nombre del cliente y número de factura. */

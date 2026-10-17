@@ -3,18 +3,20 @@
 import { useRef, useState } from "react";
 import { cn } from "@/components/ui/cn";
 import { Icon } from "@/components/ui/icon";
+import { InstalarPwa } from "@/components/app/instalar-pwa";
 import { EmpresaForm } from "@/features/empresa/components/empresa-form";
 import type { Empresa } from "@/features/empresa/schemas";
 import { MiPerfilForm } from "@/features/usuarios/components/mi-perfil-form";
 import { UsuariosPanel } from "@/features/usuarios/components/usuarios-panel";
 import type { Perfil } from "@/features/usuarios/schemas";
 
-type Tab = "empresa" | "cuenta" | "usuarios";
+type Tab = "empresa" | "cuenta" | "usuarios" | "app";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "empresa", label: "Empresa", icon: "storefront" },
   { id: "cuenta", label: "Mi usuario", icon: "account_circle" },
   { id: "usuarios", label: "Usuarios", icon: "group" },
+  { id: "app", label: "Aplicación", icon: "install_mobile" },
 ];
 
 export function ConfiguracionTabs({
@@ -35,6 +37,7 @@ export function ConfiguracionTabs({
     empresa: null,
     cuenta: null,
     usuarios: null,
+    app: null,
   });
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -89,6 +92,7 @@ export function ConfiguracionTabs({
         {tab === "empresa" && <EmpresaForm empresa={empresa} />}
         {tab === "cuenta" && <MiPerfilForm perfil={miPerfil} email={email} />}
         {tab === "usuarios" && <UsuariosPanel usuarios={usuarios} miId={miId} />}
+        {tab === "app" && <InstalarPwa />}
       </div>
     </div>
   );

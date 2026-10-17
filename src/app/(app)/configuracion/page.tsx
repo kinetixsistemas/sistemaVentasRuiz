@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
+import dynamic from "next/dynamic";
 import { PageHeader } from "@/components/ui/page-header";
+import { ListSkeleton } from "@/components/ui/skeleton";
 import { getCurrentUser } from "@/lib/auth";
 import { obtenerEmpresaService } from "@/features/empresa/service";
 import { listarUsuariosService } from "@/features/usuarios/service";
-import { ConfiguracionTabs } from "./configuracion-tabs";
+
+const ConfiguracionTabs = dynamic(() => import("./configuracion-tabs").then((m) => m.ConfiguracionTabs), {
+  loading: () => <ListSkeleton rows={4} />,
+});
 
 export const metadata: Metadata = {
   title: "Configuración",

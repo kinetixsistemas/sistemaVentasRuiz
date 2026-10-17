@@ -183,7 +183,7 @@ export function InventarioApp({
           placeholder="Buscar por código o nombre…"
           aria-label="Buscar producto"
         />
-        <Button onClick={abrirNuevo} icon="add" className="shrink-0">
+        <Button onClick={abrirNuevo} icon="add" className="shrink-0" aria-label="Nuevo producto">
           <span className="hidden sm:inline">Nuevo</span>
         </Button>
       </div>

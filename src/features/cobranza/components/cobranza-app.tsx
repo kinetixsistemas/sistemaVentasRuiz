@@ -1,13 +1,19 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { procesarPago, procesarPagoAsignado } from "@/features/cobranza/actions";
+import { useEffect, useState, useTransition } from "react";
+import {
+  listarSaldoPendiente,
+  procesarPago,
+  procesarPagoAsignado,
+  ultimosPagos,
+} from "@/features/cobranza/actions";
+import { resumenCartera } from "@/features/ventas/actions";
 import type {
   ListarSaldoPendienteResult,
-  PagoRegistrado,
   SaldoPendiente,
   UltimoCobro,
 } from "@/features/cobranza/schemas";
+import type { ResumenCartera } from "@/features/ventas/schemas";
 import {
   calcularExcedente,
   deudaTotalCliente,
@@ -20,13 +26,16 @@ import { FilaFactura } from "@/features/ventas/components/factura-fila";
 import type { MetodoPago } from "@/types/database";
 import { round2 } from "@/lib/currency";
 import { fechaHoyISO } from "@/lib/dates";
+import { POR_PAGINA } from "@/lib/pagination";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FiltroFechas } from "@/components/ui/filtro-fechas";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { Pagination } from "@/components/ui/pagination";
 import { Select } from "@/components/ui/select";
 import { StatCard } from "@/components/ui/stat-card";
 import { useToast } from "@/components/ui/toast";
@@ -42,25 +51,37 @@ const METODO_ICONO: Record<MetodoPago, string> = {
 
 export function CobranzaApp({
   datos,
+  paginaInicial,
+  rangoInicial,
   ultimosPagos: pagosIniciales,
-  pedidoFacturaId,
+  cartera: carteraInicial,
+  pedidoFactura,
   errorMensaje,
 }: {
   datos: ListarSaldoPendienteResult;
+  paginaInicial: number;
+  rangoInicial: { desde: string; hasta: string };
   ultimosPagos: UltimoCobro[];
-  pedidoFacturaId: string | null;
+  cartera: ResumenCartera | null;
+  /** Factura abierta desde `/cobranza?pedido=<facturaId>`. */
+  pedidoFactura: SaldoPendiente | null;
   errorMensaje?: string;
 }) {
   const toast = useToast();
 
   const [facturas, setFacturas] = useState<SaldoPendiente[]>(datos.facturas);
+  const [totalPendientes, setTotalPendientes] = useState(datos.total);
+  const [pagina, setPagina] = useState(paginaInicial);
+  const [fechaDesde, setFechaDesde] = useState(rangoInicial.desde);
+  const [fechaHasta, setFechaHasta] = useState(rangoInicial.hasta);
   const [pagos, setPagos] = useState<UltimoCobro[]>(pagosIniciales);
-  const [totalSaldo, setTotalSaldo] = useState(datos.total);
+  const [cartera, setCartera] = useState<ResumenCartera | null>(carteraInicial);
+  const [recargando, startRecargar] = useTransition();
 
-  const [pago, setPago] = useState<SaldoPendiente | null>(() => {
-    if (!pedidoFacturaId) return null;
-    return datos.facturas.find((f) => f.factura_id === pedidoFacturaId) ?? null;
-  });
+  const [pago, setPago] = useState<SaldoPendiente | null>(pedidoFactura);
+  const [facturasCliente, setFacturasCliente] = useState<SaldoPendiente[]>(() =>
+    pedidoFactura ? facturasDelCliente(datos.facturas, pedidoFactura.cliente_id) : []
+  );
   const [detalle, setDetalle] = useState<SaldoPendiente | null>(null);
 
   const [metodo, setMetodo] = useState<MetodoPago>("efectivo");
@@ -80,11 +101,14 @@ export function CobranzaApp({
   const usdEstimado = esBs && Number(tasa) > 0 ? round2(montoNum / Number(tasa)) : montoNum;
 
   // Deuda total del cliente y excedente a repartir cuando el monto supera el
-  // saldo de la factura elegida. Todo en USD (moneda base).
-  const facturasCliente = pago ? facturasDelCliente(facturas, pago.cliente_id) : [];
-  const deudaCliente = pago ? deudaTotalCliente(facturas, pago.cliente_id) : 0;
+  // saldo de la factura elegida. Todo en USD (moneda base). Se usan TODAS las
+  // facturas abiertas del cliente (cargadas aparte de la página visible).
+  const facturasClienteTodas = pago
+    ? facturasDelCliente(facturasCliente, pago.cliente_id)
+    : [];
+  const deudaCliente = pago ? deudaTotalCliente(facturasCliente, pago.cliente_id) : 0;
   const otrasFacturas = pago
-    ? facturasCliente.filter((f) => f.factura_id !== pago.factura_id)
+    ? facturasClienteTodas.filter((f) => f.factura_id !== pago.factura_id)
     : [];
   const excedente = pago ? calcularExcedente(usdEstimado, pago.saldo_usd) : 0;
   const requiereAsignacion = excedente > TOLERANCIA_USD;
@@ -96,16 +120,101 @@ export function CobranzaApp({
     }))
   );
 
-  const totalPendiente = facturas.reduce((acc, f) => acc + f.saldo_usd, 0);
-  const abiertas = facturas.length;
-  const vencidaMonto = facturas
-    .filter((f) => f.estado === "vencida")
-    .reduce((acc, f) => acc + f.saldo_usd, 0);
-  const vencidaCantidad = facturas.filter((f) => f.estado === "vencida").length;
-  const porVencerMonto = facturas
-    .filter((f) => f.estado === "por_vencer")
-    .reduce((acc, f) => acc + f.saldo_usd, 0);
-  const porVencerCantidad = facturas.filter((f) => f.estado === "por_vencer").length;
+  // KPIs de toda la cartera (RPC en BD); si aún no cargan, se aproximan con la página.
+  const totalPendiente = cartera?.por_cobrar_usd ?? facturas.reduce((acc, f) => acc + f.saldo_usd, 0);
+  const abiertas = cartera?.facturas_abiertas ?? facturas.length;
+  const vencidaMonto = cartera?.vencidas_usd ?? facturas.filter((f) => f.estado === "vencida").reduce((acc, f) => acc + f.saldo_usd, 0);
+  const vencidaCantidad = cartera?.facturas_vencidas ?? facturas.filter((f) => f.estado === "vencida").length;
+  const porVencerMonto = cartera?.por_vencer_usd ?? facturas.filter((f) => f.estado === "por_vencer").reduce((acc, f) => acc + f.saldo_usd, 0);
+  const porVencerCantidad = cartera?.facturas_por_vencer ?? facturas.filter((f) => f.estado === "por_vencer").length;
+
+  const filtrando = fechaDesde !== "" || fechaHasta !== "";
+
+  /** Refleja página y rango en la URL para conservarlos al recargar. */
+  function sincronizarUrl(paginaNueva: number, desde: string, hasta: string) {
+    const params = new URLSearchParams();
+    if (paginaNueva > 1) params.set("pagina", String(paginaNueva));
+    if (desde) params.set("desde", desde);
+    if (hasta) params.set("hasta", hasta);
+    const query = params.toString();
+    window.history.replaceState(null, "", `/cobranza${query ? `?${query}` : ""}`);
+  }
+
+  function consultar(
+    paginaNueva: number,
+    desde: string,
+    hasta: string
+  ) {
+    startRecargar(async () => {
+      const res = await listarSaldoPendiente({
+        pagina: paginaNueva,
+        porPagina: POR_PAGINA,
+        fecha_desde: desde || undefined,
+        fecha_hasta: hasta || undefined,
+      });
+      if (res.ok) {
+        setFacturas(res.data.facturas);
+        setTotalPendientes(res.data.total);
+        setPagina(paginaNueva);
+        sincronizarUrl(paginaNueva, desde, hasta);
+      } else {
+        toast.error(res.error.message);
+      }
+    });
+  }
+
+  /** Recarga la página actual, los KPIs de cartera y los últimos cobros. */
+  function recargar(paginaNueva = pagina, desde = fechaDesde, hasta = fechaHasta) {
+    startRecargar(async () => {
+      const [saldos, cobrosRes, carteraRes] = await Promise.all([
+        listarSaldoPendiente({
+          pagina: paginaNueva,
+          porPagina: POR_PAGINA,
+          fecha_desde: desde || undefined,
+          fecha_hasta: hasta || undefined,
+        }),
+        ultimosPagos({ limite: 10 }),
+        resumenCartera(),
+      ]);
+      if (saldos.ok) {
+        setFacturas(saldos.data.facturas);
+        setTotalPendientes(saldos.data.total);
+        setPagina(paginaNueva);
+      }
+      if (cobrosRes.ok) setPagos(cobrosRes.data);
+      if (carteraRes.ok) setCartera(carteraRes.data);
+    });
+  }
+
+  function aplicarRango(desde: string, hasta: string) {
+    setFechaDesde(desde);
+    setFechaHasta(hasta);
+    consultar(1, desde, hasta);
+  }
+
+  function cambiarPagina(nueva: number) {
+    if (nueva < 1) return;
+    consultar(nueva, fechaDesde, fechaHasta);
+  }
+
+  /** Trae todas las facturas abiertas del cliente (paginadas aparte) para asignar excedentes. */
+  function cargarFacturasCliente(clienteId: string) {
+    void listarSaldoPendiente({ cliente_id: clienteId, porPagina: 100 }).then((res) => {
+      if (res.ok) setFacturasCliente(res.data.facturas);
+    });
+  }
+
+  // Deep-link `?pedido=<facturaId>`: completa las facturas del cliente para el excedente.
+  useEffect(() => {
+    if (!pedidoFactura) return;
+    let activo = true;
+    void listarSaldoPendiente({ cliente_id: pedidoFactura.cliente_id, porPagina: 100 }).then((res) => {
+      if (activo && res.ok) setFacturasCliente(res.data.facturas);
+    });
+    return () => {
+      activo = false;
+    };
+  }, [pedidoFactura]);
 
   function abrirCobro(factura: SaldoPendiente) {
     setPago(factura);
@@ -117,6 +226,20 @@ export function CobranzaApp({
     setFecha(fechaHoyISO());
     setAsignaciones({});
     setErrores({});
+    // Semilla con la página visible y luego la lista completa del cliente.
+    setFacturasCliente(facturasDelCliente(facturas, factura.cliente_id));
+    cargarFacturasCliente(factura.cliente_id);
+  }
+
+  /** Cierra el modal de cobro y quita `?pedido=` de la URL para no reabrirlo. */
+  function cerrarCobro() {
+    setPago(null);
+    if (window.location.search.includes("pedido=")) {
+      const params = new URLSearchParams(window.location.search);
+      params.delete("pedido");
+      const query = params.toString();
+      window.history.replaceState(null, "", `/cobranza${query ? `?${query}` : ""}`);
+    }
   }
 
   function cambiarMetodo(nuevo: MetodoPago) {
@@ -124,27 +247,6 @@ export function CobranzaApp({
     // Referencia y correo solo aplican a ciertos métodos: se limpian los que no.
     if (nuevo === "efectivo") setReferencia("");
     if (nuevo !== "zelle" && nuevo !== "binance") setCorreo("");
-  }
-
-  function aplicarResultados(registrados: PagoRegistrado[]) {
-    const porFactura = new Map(registrados.map((r) => [r.factura_id, r]));
-    setFacturas((prev) =>
-      prev.flatMap((f) => {
-        const r = porFactura.get(f.factura_id);
-        if (!r) return [f];
-        if (r.saldo_usd <= TOLERANCIA_USD) return [];
-        return [
-          {
-            ...f,
-            saldo_usd: r.saldo_usd,
-            total_pagado_usd: round2(f.total_pagado_usd + r.monto_usd),
-          },
-        ];
-      })
-    );
-    const saldadas = registrados.filter((r) => r.saldo_usd <= TOLERANCIA_USD).length;
-    if (saldadas > 0) setTotalSaldo((t) => Math.max(0, t - saldadas));
-    setPagos((prev) => [...registrados.map((r) => r.pago), ...prev].slice(0, 10));
   }
 
   function guardarPago(evento: React.FormEvent<HTMLFormElement>) {
@@ -159,8 +261,6 @@ export function CobranzaApp({
         correo: correo.trim() === "" ? undefined : correo.trim(),
         fecha: fecha === "" ? undefined : fecha,
       };
-
-      let registrados: PagoRegistrado[];
 
       if (requiereAsignacion) {
         if (!validacionAsignacion.valido) return;
@@ -181,7 +281,6 @@ export function CobranzaApp({
           toast.error(res.error.message);
           return;
         }
-        registrados = res.data.pagos;
       } else {
         const res = await procesarPago({
           factura_id: pago.factura_id,
@@ -193,12 +292,12 @@ export function CobranzaApp({
           toast.error(res.error.message);
           return;
         }
-        registrados = [res.data];
       }
 
-      setPago(null);
+      cerrarCobro();
       toast.success("Pago registrado y saldo actualizado");
-      aplicarResultados(registrados);
+      // Refresca la página, los KPIs de cartera y los últimos cobros desde la BD.
+      recargar();
     });
   }
 
@@ -236,37 +335,66 @@ export function CobranzaApp({
       <section aria-label="Saldos pendientes">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-label-lg text-on-surface-variant">Pendientes</h2>
-          <span className="text-body-sm tabular-nums text-on-surface-variant">{totalSaldo}</span>
+          <span className="text-body-sm tabular-nums text-on-surface-variant">{totalPendientes}</span>
         </div>
-        {facturas.length === 0 ? (
+        <div className="mb-3">
+          <FiltroFechas
+            desde={fechaDesde}
+            hasta={fechaHasta}
+            onAplicar={aplicarRango}
+            onLimpiar={() => aplicarRango("", "")}
+            cargando={recargando}
+          />
+        </div>
+        {facturas.length === 0 && !recargando ? (
           <EmptyState
-            icon="check_circle"
-            title="Sin saldos pendientes"
-            description="Todas las facturas están al día. En esta sección verás cuentas por cobrar."
+            icon={filtrando ? "search_off" : "check_circle"}
+            title={filtrando ? "Sin resultados" : "Sin saldos pendientes"}
+            description={
+              filtrando
+                ? "No hay facturas pendientes emitidas en ese rango de fechas."
+                : "Todas las facturas están al día. En esta sección verás cuentas por cobrar."
+            }
+            action={
+              filtrando ? (
+                <Button variant="secondary" onClick={() => aplicarRango("", "")}>
+                  Limpiar filtros
+                </Button>
+              ) : undefined
+            }
           />
         ) : (
-          <Card contentClassName="p-0">
-            <ul className="divide-y divide-outline-variant">
-              {facturas.map((factura) => (
-                <FilaFactura
-                  key={factura.factura_id}
-                  factura={factura}
-                  onVerDetalle={() => setDetalle(factura)}
-                  accionCobro={
-                    <Button
-                      size="sm"
-                      icon="payments"
-                      onClick={() => abrirCobro(factura)}
-                      aria-label={`Cobrar factura ${factura.numero_factura}`}
-                      className="shrink-0"
-                    >
-                      <span className="hidden sm:inline">Cobrar</span>
-                    </Button>
-                  }
-                />
-              ))}
-            </ul>
-          </Card>
+          <>
+            <Card contentClassName={cn("p-0 transition-opacity", recargando && "pointer-events-none opacity-60")}>
+              <ul className="divide-y divide-outline-variant">
+                {facturas.map((factura) => (
+                  <FilaFactura
+                    key={factura.factura_id}
+                    factura={factura}
+                    onVerDetalle={() => setDetalle(factura)}
+                    accionCobro={
+                      <Button
+                        size="sm"
+                        icon="payments"
+                        onClick={() => abrirCobro(factura)}
+                        aria-label={`Cobrar factura ${factura.numero_factura}`}
+                        className="shrink-0"
+                      >
+                        <span className="hidden sm:inline">Cobrar</span>
+                      </Button>
+                    }
+                  />
+                ))}
+              </ul>
+            </Card>
+            <Pagination
+              pagina={pagina}
+              total={totalPendientes}
+              porPagina={POR_PAGINA}
+              onCambiar={cambiarPagina}
+              cargando={recargando}
+            />
+          </>
         )}
       </section>
 
@@ -307,12 +435,12 @@ export function CobranzaApp({
 
       <Modal
         open={pago !== null}
-        onClose={() => setPago(null)}
+        onClose={cerrarCobro}
         title={pago ? `Cobrar factura ${pago.numero_factura}` : ""}
         size="sm"
         footer={
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button variant="secondary" className="w-full sm:flex-1" disabled={guardando} onClick={() => setPago(null)}>
+            <Button variant="secondary" className="w-full sm:flex-1" disabled={guardando} onClick={cerrarCobro}>
               Cancelar
             </Button>
             <Button

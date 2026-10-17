@@ -76,6 +76,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
         className={classes}
         aria-disabled={Boolean(disabled || loading)}
         tabIndex={disabled ? -1 : undefined}
+        {...(rest as React.AnchorHTMLAttributes<HTMLAnchorElement>)}
       >
         {content}
       </Link>

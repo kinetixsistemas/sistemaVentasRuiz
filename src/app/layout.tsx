@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { ToastProvider } from "@/components/ui/toast";
 import { PwaRegister } from "@/components/app/pwa-register";
+import { Splash } from "@/components/app/splash";
 import "./globals.css";
 
 // Nombre para los metadatos (estático). La marca dinámica de la empresa
@@ -20,7 +21,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0000ff",
+  themeColor: "#f5f5f7",
 };
 
 export default function RootLayout({
@@ -30,6 +31,7 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <body className="font-sans">
         <ToastProvider>{children}</ToastProvider>
+        <Splash />
         <PwaRegister />
       </body>
     </html>

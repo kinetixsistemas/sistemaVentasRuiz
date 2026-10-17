@@ -88,16 +88,22 @@ export const crearFacturaSchema = z
     }
   });
 
-export const listarFacturasSchema = z.object({
-  cliente_id: z.string().uuid("Identificador de cliente inválido").optional(),
-  fecha_desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").optional(),
-  fecha_hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").optional(),
-  estado: z
-    .enum(["pagada", "vencida", "por_vencer", "pendiente", "todas"], "Filtro inválido")
-    .default("todas"),
-  busqueda: z.string().trim().max(100, "La búsqueda es demasiado larga").optional(),
-  limite: z.coerce.number().int().min(1).max(200, "Máximo 200").optional(),
-});
+export const listarFacturasSchema = z
+  .object({
+    cliente_id: z.string().uuid("Identificador de cliente inválido").optional(),
+    fecha_desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").optional(),
+    fecha_hasta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").optional(),
+    estado: z
+      .enum(["pagada", "vencida", "por_vencer", "pendiente", "todas"], "Filtro inválido")
+      .default("todas"),
+    busqueda: z.string().trim().max(100, "La búsqueda es demasiado larga").optional(),
+    pagina: z.coerce.number().int().min(1, "Página inválida").default(1),
+    porPagina: z.coerce.number().int().min(1).max(100, "Máximo 100 por página").default(20),
+  })
+  .refine(
+    (v) => !v.fecha_desde || !v.fecha_hasta || v.fecha_desde <= v.fecha_hasta,
+    "El rango de fechas no es válido"
+  );
 
 export const obtenerFacturaSchema = z.object({
   id: z.string().uuid("Identificador de factura inválido"),
@@ -144,6 +150,12 @@ export type FacturaConSaldo = {
   saldo_usd: number;
   estado: EstadoFactura;
   dias_mora: number;
+};
+
+/** Página de facturas más el total de coincidencias del filtro. */
+export type ListarFacturasResult = {
+  facturas: FacturaConSaldo[];
+  total: number;
 };
 
 export type ItemFactura = {

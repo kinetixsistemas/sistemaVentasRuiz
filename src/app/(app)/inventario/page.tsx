@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
+import dynamic from "next/dynamic";
 import { PageHeader } from "@/components/ui/page-header";
+import { ListSkeleton } from "@/components/ui/skeleton";
 import { listarProductos } from "@/features/inventario/actions";
 import { obtenerEmpresaService } from "@/features/empresa/service";
-import { InventarioApp } from "@/features/inventario/components/inventario-app";
+
+const InventarioApp = dynamic(
+  () => import("@/features/inventario/components/inventario-app").then((m) => m.InventarioApp),
+  { loading: () => <ListSkeleton rows={4} /> }
+);
 
 export const metadata: Metadata = {
   title: "Inventario",

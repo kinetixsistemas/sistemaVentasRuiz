@@ -1,6 +1,7 @@
 import {
   listarSaldoPendienteRepo,
   obtenerCobroPorIdRepo,
+  obtenerSaldoPendienteRepo,
   procesarPagoAsignadoRepo,
   procesarPagoRepo,
   ultimosPagosRepo,
@@ -13,6 +14,7 @@ import type {
   PagoRegistrado,
   ProcesarPagoAsignadoInput,
   ProcesarPagoInput,
+  SaldoPendiente,
   UltimoCobro,
 } from "./schemas";
 
@@ -69,6 +71,18 @@ export async function ultimosPagosService(limite: number): Promise<ActionResult<
   try {
     const pagos = await ultimosPagosRepo(limite);
     return okResult(pagos);
+  } catch (error) {
+    return fromPostgresError(error);
+  }
+}
+
+/** Una factura con saldo por su id (deep-link de cobro). */
+export async function obtenerSaldoPendienteService(
+  facturaId: string
+): Promise<ActionResult<SaldoPendiente | null>> {
+  try {
+    const saldo = await obtenerSaldoPendienteRepo(facturaId);
+    return okResult(saldo);
   } catch (error) {
     return fromPostgresError(error);
   }

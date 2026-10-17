@@ -2,6 +2,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { getSupabaseEnv } from "./env";
+import { SESSION_COOKIE_OPTIONS } from "./cookie-options";
 
 let browserClient: SupabaseClient<Database> | null = null;
 
@@ -13,7 +14,9 @@ let browserClient: SupabaseClient<Database> | null = null;
 export function createSupabaseBrowserClient(): SupabaseClient<Database> {
   if (!browserClient) {
     const { url, key } = getSupabaseEnv();
-    browserClient = createBrowserClient<Database>(url, key);
+    browserClient = createBrowserClient<Database>(url, key, {
+      cookieOptions: SESSION_COOKIE_OPTIONS,
+    });
   }
   return browserClient;
 }

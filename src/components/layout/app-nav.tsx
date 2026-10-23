@@ -11,6 +11,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Inicio", icon: "home" },
   { href: "/inventario", label: "Inventario", icon: "inventory_2" },
   { href: "/clientes", label: "Clientes", icon: "groups" },
+  { href: "/vendedores", label: "Vendedores", icon: "person" },
   { href: "/ventas", label: "Ventas", icon: "point_of_sale" },
   { href: "/cobranza", label: "Cobranza", icon: "payments" },
 ];
@@ -76,7 +77,7 @@ export function BottomNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className="flex min-h-0 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset"
+            className="flex min-h-0 min-w-0 items-center justify-center px-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset"
           >
             <span
               className={cn(
@@ -85,7 +86,9 @@ export function BottomNav() {
               )}
             >
               <Icon name={item.icon} size={23} strokeWidth={active ? 2.3 : 1.8} />
-              <span className="text-label-sm">{item.label}</span>
+              <span className="max-w-full truncate text-[10px] leading-none sm:text-label-sm">
+                {item.label}
+              </span>
             </span>
           </Link>
         );

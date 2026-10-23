@@ -28,6 +28,24 @@ export type RolUsuario = "admin" | "vendedor";
 export interface Database {
   public: {
     Tables: {
+      categorias: {
+        Row: {
+          id: string;
+          nombre: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          nombre: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          nombre?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       productos: {
         Row: {
           id: string;
@@ -36,6 +54,7 @@ export interface Database {
           cantidad: number;
           precio_usd: number;
           foto_url: string | null;
+          categoria_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -46,6 +65,7 @@ export interface Database {
           cantidad?: number;
           precio_usd?: number;
           foto_url?: string | null;
+          categoria_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -56,6 +76,7 @@ export interface Database {
           cantidad?: number;
           precio_usd?: number;
           foto_url?: string | null;
+          categoria_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -70,7 +91,7 @@ export interface Database {
           telefono: string;
           correo: string;
           direccion: string;
-          vendedor: string;
+          vendedor_id: string;
           created_at: string;
           updated_at: string;
         };
@@ -82,7 +103,7 @@ export interface Database {
           telefono: string;
           correo: string;
           direccion: string;
-          vendedor: string;
+          vendedor_id: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -94,9 +115,93 @@ export interface Database {
           telefono?: string;
           correo?: string;
           direccion?: string;
-          vendedor?: string;
+          vendedor_id?: string;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      vendedores: {
+        Row: {
+          id: string;
+          nombre: string;
+          comision_pct: number;
+          activo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nombre: string;
+          comision_pct?: number;
+          activo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          nombre?: string;
+          comision_pct?: number;
+          activo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      comisiones_vendedor: {
+        Row: {
+          id: string;
+          factura_id: string;
+          vendedor_id: string;
+          base_usd: number;
+          comision_pct: number;
+          monto_usd: number;
+          pagada_at: string;
+          created_at: string;
+          updated_at: string;
+          fecha: string;
+          metodo: string;
+          moneda: string;
+          monto_original: number;
+          tasa_cambio: number | null;
+          referencia: string | null;
+          correo: string | null;
+        };
+        Insert: {
+          id?: string;
+          factura_id: string;
+          vendedor_id: string;
+          base_usd: number;
+          comision_pct: number;
+          monto_usd: number;
+          pagada_at?: string;
+          created_at?: string;
+          updated_at?: string;
+          fecha?: string;
+          metodo: string;
+          moneda: string;
+          monto_original: number;
+          tasa_cambio?: number | null;
+          referencia?: string | null;
+          correo?: string | null;
+        };
+        Update: {
+          id?: string;
+          factura_id?: string;
+          vendedor_id?: string;
+          base_usd?: number;
+          comision_pct?: number;
+          monto_usd?: number;
+          pagada_at?: string;
+          created_at?: string;
+          updated_at?: string;
+          fecha?: string;
+          metodo?: string;
+          moneda?: string;
+          monto_original?: number;
+          tasa_cambio?: number | null;
+          referencia?: string | null;
+          correo?: string | null;
         };
         Relationships: [];
       };
@@ -104,6 +209,7 @@ export interface Database {
         Row: {
           id: string;
           cliente_id: string;
+          vendedor_id: string;
           numero_factura: string;
           fecha_emision: string;
           condicion: CondicionFactura;
@@ -117,6 +223,7 @@ export interface Database {
         Insert: {
           id?: string;
           cliente_id: string;
+          vendedor_id?: string;
           numero_factura: string;
           fecha_emision?: string;
           condicion: CondicionFactura;
@@ -130,6 +237,7 @@ export interface Database {
         Update: {
           id?: string;
           cliente_id?: string;
+          vendedor_id?: string;
           numero_factura?: string;
           fecha_emision?: string;
           condicion?: CondicionFactura;
@@ -300,6 +408,7 @@ export interface Database {
           estado: EstadoFactura;
           dias_mora: number;
           created_at: string;
+          vendedor_id: string;
         };
         Insert: never;
         Update: never;
@@ -382,6 +491,59 @@ export interface Database {
           total_vendido_usd: number;
           total_recaudado_usd: number;
         };
+      };
+      resumen_vendedores: {
+        Args: {
+          p_desde?: string | null;
+          p_hasta?: string | null;
+        };
+        Returns: Array<{
+          id: string;
+          nombre: string;
+          comision_pct: number;
+          activo: boolean;
+          facturas_periodo: number;
+          pagadas_periodo: number;
+          pendientes_periodo: number;
+          vendido_periodo_usd: number;
+          cobrado_periodo_usd: number;
+          saldo_periodo_usd: number;
+          facturas_total: number;
+          pagadas_total: number;
+          vendido_total_usd: number;
+          comision_total_usd: number;
+          comision_pagada_usd: number;
+          comision_pendiente_usd: number;
+          comisiones_pagadas: number;
+        }>;
+      };
+      pagar_comision_vendedor: {
+        Args: {
+          p_factura_id: string;
+          p_comision_pct: number;
+          p_metodo: string;
+          p_monto: number;
+          p_tasa?: number | null;
+          p_referencia?: string | null;
+          p_correo?: string | null;
+          p_fecha?: string | null;
+        };
+        Returns: Array<{
+          comision_id: string;
+          factura_id: string;
+          vendedor_id: string;
+          base_usd: number;
+          comision_pct: number;
+          monto_usd: number;
+          pagada_at: string;
+          fecha: string;
+          metodo: string;
+          moneda: string;
+          monto_original: number;
+          tasa_cambio: number | null;
+          referencia: string | null;
+          correo: string | null;
+        }>;
       };
       productos_stock_bajo: {
         Args: {

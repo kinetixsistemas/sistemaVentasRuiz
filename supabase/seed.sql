@@ -23,6 +23,8 @@ declare
   v_f4 uuid;
   v_f5 uuid;
   v_hoy date := (now() at time zone 'America/Caracas')::date;
+  v_luis uuid;
+  v_pedro uuid;
 begin
   if exists (select 1 from public.productos) then
     raise notice 'El seed base ya fue aplicado; se omite.';
@@ -38,30 +40,39 @@ begin
     ('P005', 'Alambre dulce 1 kg', 350, 2.40),
     ('P006', 'Disco de corte 7"', 250, 4.80);
 
+  -- ---- Vendedores -------------------------------------------------------
+  insert into public.vendedores (nombre, comision_pct) values
+    ('Luis Márquez', 5.00),
+    ('Pedro Salas', 4.00)
+  on conflict do nothing;
+
+  select id into v_luis from public.vendedores where nombre = 'Luis Márquez';
+  select id into v_pedro from public.vendedores where nombre = 'Pedro Salas';
+
   -- ---- Clientes ---------------------------------------------------------
-  insert into public.clientes (rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor)
+  insert into public.clientes (rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor_id)
   values ('J-12345678-9', 'Construcciones Andes, C.A.', 'José Pérez', '04141234567',
-          'compras@andes.com', 'Av. principal, Galpón 4, Barquisimeto', 'Luis Márquez')
+          'compras@andes.com', 'Av. principal, Galpón 4, Barquisimeto', v_luis)
   returning id into v_a;
 
-  insert into public.clientes (rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor)
+  insert into public.clientes (rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor_id)
   values ('G-20000000-1', 'Ferretería El Tornillo, S.A.', 'María Gómez', '02121234567',
-          'ventas@eltornillo.com', 'Calle 5 con carrera 8, Valencia', 'Luis Márquez')
+          'ventas@eltornillo.com', 'Calle 5 con carrera 8, Valencia', v_luis)
   returning id into v_b;
 
-  insert into public.clientes (rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor)
+  insert into public.clientes (rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor_id)
   values ('C-30000000-2', 'Inversiones Delta, C.A.', 'Carlos Ruiz', '04160001122',
-          'admin@delta.com.ve', 'Zona industrial, galpón 12, Maracay', 'Pedro Salas')
+          'admin@delta.com.ve', 'Zona industrial, galpón 12, Maracay', v_pedro)
   returning id into v_c;
 
-  insert into public.clientes (rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor)
+  insert into public.clientes (rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor_id)
   values ('J-40000000-3', 'Materiales Miranda, C.A.', 'Ana Miranda', '04140001111',
-          'compras@miranda.com', 'Av. Bolívar, San Felipe', 'Luis Márquez')
+          'compras@miranda.com', 'Av. Bolívar, San Felipe', v_luis)
   on conflict (rif) do nothing;
 
-  insert into public.clientes (rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor)
+  insert into public.clientes (rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor_id)
   values ('J-50000000-4', 'Construcciones Lara, C.A.', 'Roberto Lara', '04140002222',
-          'gerencia@laraca.com', 'Zona Norte, Barquisimeto', 'Pedro Salas')
+          'gerencia@laraca.com', 'Zona Norte, Barquisimeto', v_pedro)
   on conflict (rif) do nothing;
 
   -- ---- Factura 1: contado, totalmente pagada (efectivo) -----------------

@@ -13,6 +13,7 @@
  */
 export const TAG_PRODUCTOS = "productos";
 export const TAG_CLIENTES = "clientes";
+export const TAG_VENDEDORES = "vendedores";
 export const TAG_FACTURAS = "facturas";
 export const TAG_COBRANZA = "cobranza";
 export const TAG_EMPRESA = "empresa";

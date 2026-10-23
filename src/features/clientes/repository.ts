@@ -15,7 +15,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient
 const TOLERANCIA_SALDO = 0.005;
 
 const COLUMNAS =
-  "id, rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor";
+  "id, rif, nombre_juridico, nombre_encargado, telefono, correo, direccion, vendedor_id";
 
 type ClienteSeleccion = Pick<
   ClienteFila,
@@ -26,7 +26,7 @@ type ClienteSeleccion = Pick<
   | "telefono"
   | "correo"
   | "direccion"
-  | "vendedor"
+  | "vendedor_id"
 >;
 
 function mapearCliente(fila: ClienteSeleccion): Cliente {
@@ -38,7 +38,7 @@ function mapearCliente(fila: ClienteSeleccion): Cliente {
     telefono: fila.telefono,
     correo: fila.correo,
     direccion: fila.direccion,
-    vendedor: fila.vendedor,
+    vendedor_id: fila.vendedor_id,
   };
 }
 

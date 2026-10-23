@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "./cn";
 import { Icon } from "./icon";
 
@@ -53,6 +54,12 @@ export function Modal({
   const titleId = useId();
   const idRef = useRef<number | null>(null);
   const onCloseRef = useRef(onClose);
+  // Falso en servidor, verdadero en cliente: evita renderizar el portal durante SSR.
+  const montado = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -116,10 +123,10 @@ export function Modal({
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !montado) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-6">
       <div
         className="absolute inset-0 animate-fade-in bg-black/40"
         onClick={onClose}
@@ -155,11 +162,12 @@ export function Modal({
         </header>
         <div className="overflow-y-auto border-t border-outline-variant p-4 sm:p-5">{children}</div>
         {footer && (
-          <footer className="border-t border-outline-variant bg-surface-container-low px-4 py-3.5 sm:px-5">
+          <footer className="border-t border-outline-variant bg-surface-container-low px-4 pt-3.5 pb-[calc(0.875rem+env(safe-area-inset-bottom))] sm:px-5 md:pb-3.5">
             {footer}
           </footer>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

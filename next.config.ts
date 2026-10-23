@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "2mb",
     },
+    agentUpgrade: "security",
   },
   // Las fotos se sirven desde Supabase Storage y ya vienen optimizadas,
   // por lo que no se usa el optimizador de imágenes de Vercel.

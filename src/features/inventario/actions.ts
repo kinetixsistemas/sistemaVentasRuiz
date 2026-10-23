@@ -10,20 +10,27 @@ import {
 import { TAG_PRODUCTOS } from "@/lib/tags";
 import {
   actualizarProductoService,
+  crearCategoriaService,
   crearProductoService,
   eliminarProductoService,
+  listarCategoriasService,
   listarProductosService,
   listarStockBajoService,
+  listarSugerenciasService,
   obtenerProductoService,
   subirFotoProductoService,
 } from "./service";
 import {
   actualizarProductoSchema,
+  crearCategoriaSchema,
   crearProductoSchema,
   listarProductosSchema,
   listarStockBajoSchema,
+  sugerenciasProductosSchema,
+  type Categoria,
   type ListarProductosResult,
   type Producto,
+  type SugerenciaProducto,
 } from "./schemas";
 
 export async function crearProducto(input: unknown): Promise<ActionResult<Producto>> {
@@ -70,6 +77,30 @@ export async function listarProductos(input?: unknown): Promise<ActionResult<Lis
   const parsed = listarProductosSchema.safeParse(input ?? {});
   if (!parsed.success) return fromZodError<ListarProductosResult>(parsed.error);
   return listarProductosService(parsed.data);
+}
+
+export async function listarCategorias(): Promise<ActionResult<Categoria[]>> {
+  await requireUser();
+  return listarCategoriasService();
+}
+
+export async function listarSugerenciasProductos(
+  input: unknown
+): Promise<ActionResult<SugerenciaProducto[]>> {
+  await requireUser();
+  const parsed = sugerenciasProductosSchema.safeParse(input);
+  if (!parsed.success) return fromZodError<SugerenciaProducto[]>(parsed.error);
+  return listarSugerenciasService(parsed.data.busqueda, parsed.data.limite);
+}
+
+export async function crearCategoria(input: unknown): Promise<ActionResult<Categoria>> {
+  await requireUser();
+  const parsed = crearCategoriaSchema.safeParse(input);
+  if (!parsed.success) return fromZodError<Categoria>(parsed.error);
+
+  const result = await crearCategoriaService(parsed.data.nombre);
+  if (result.ok) updateTag(TAG_PRODUCTOS);
+  return result;
 }
 
 /**

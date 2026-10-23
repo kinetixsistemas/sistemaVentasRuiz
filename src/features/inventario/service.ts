@@ -1,15 +1,20 @@
 import {
   actualizarFotoRepo,
+  actualizarProductoRepo,
+  crearCategoriaRepo,
   crearProductoRepo,
   eliminarFotoRepo,
   eliminarProductoRepo,
+  listarCategoriasRepo,
+  listarProductosParaPdfRepo,
   listarProductosRepo,
   listarStockBajoRepo,
+  listarSugerenciasRepo,
+  obtenerCategoriaPorNombreRepo,
   obtenerProductoRepo,
   obtenerPublicUrlRepo,
   subirFotoRepo,
   tieneMovimientosRepo,
-  actualizarProductoRepo,
 } from "./repository";
 import {
   errorResult,
@@ -21,10 +26,14 @@ import {
 import { round2 } from "@/lib/currency";
 import type {
   ActualizarProductoInput,
+  Categoria,
+  CategoriaFiltro,
   CrearProductoInput,
+  ExistenciaFiltro,
   ListarProductosInput,
   ListarProductosResult,
   Producto,
+  SugerenciaProducto,
 } from "./schemas";
 
 export async function crearProductoService(
@@ -86,8 +95,60 @@ export async function listarProductosService(
   input: ListarProductosInput
 ): Promise<ActionResult<ListarProductosResult>> {
   try {
-    const data = await listarProductosRepo(input.busqueda, input.pagina, input.porPagina);
+    const data = await listarProductosRepo(
+      input.busqueda,
+      input.existencia,
+      input.categoria ?? null,
+      input.pagina,
+      input.porPagina
+    );
     return okResult(data);
+  } catch (error) {
+    return fromPostgresError(error);
+  }
+}
+
+export async function listarProductosParaPdfService(
+  busqueda: string | undefined,
+  existencia: ExistenciaFiltro,
+  categorias: CategoriaFiltro
+): Promise<ActionResult<Producto[]>> {
+  try {
+    const productos = await listarProductosParaPdfRepo(busqueda, existencia, categorias);
+    return okResult(productos);
+  } catch (error) {
+    return fromPostgresError(error);
+  }
+}
+
+export async function listarSugerenciasService(
+  busqueda: string,
+  limite: number
+): Promise<ActionResult<SugerenciaProducto[]>> {
+  try {
+    const sugerencias = await listarSugerenciasRepo(busqueda, limite);
+    return okResult(sugerencias);
+  } catch (error) {
+    return fromPostgresError(error);
+  }
+}
+
+export async function listarCategoriasService(): Promise<ActionResult<Categoria[]>> {
+  try {
+    const categorias = await listarCategoriasRepo();
+    return okResult(categorias);
+  } catch (error) {
+    return fromPostgresError(error);
+  }
+}
+
+export async function crearCategoriaService(nombre: string): Promise<ActionResult<Categoria>> {
+  try {
+    const existente = await obtenerCategoriaPorNombreRepo(nombre);
+    if (existente) return okResult(existente);
+
+    const categoria = await crearCategoriaRepo(nombre);
+    return okResult(categoria);
   } catch (error) {
     return fromPostgresError(error);
   }

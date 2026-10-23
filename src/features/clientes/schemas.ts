@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { nombreSoloLetras } from "@/lib/zod-helpers";
 
 /**
  * RIF: se acepta con o sin guiones y en cualquier capitalización.
@@ -29,21 +30,10 @@ export const nombreJuridicoSchema = z
     "Caracteres no permitidos en el nombre jurídico"
   );
 
-/** Nombres de personas: solo letras (tildes, ñ), espacios y apóstrofes. */
-function nombreSoloLetras(campo: string, max: number) {
-  return z
-    .string({ error: `${campo} es obligatorio` })
-    .trim()
-    .min(1, `${campo} es obligatorio`)
-    .max(max, `Máximo ${max} caracteres`)
-    .refine(
-      (v) => /^[A-Za-záéíóúüñÁÉÍÓÚÜÑ ']+$/.test(v),
-      `${campo} solo puede contener letras, espacios y apóstrofes`
-    );
-}
-
 export const nombreEncargadoSchema = nombreSoloLetras("El nombre del encargado", 120);
-export const vendedorSchema = nombreSoloLetras("El vendedor", 120);
+export const vendedorIdSchema = z
+  .string({ error: "El vendedor es obligatorio" })
+  .uuid("Selecciona un vendedor válido");
 
 /** Teléfono: se eliminan +, espacios y guiones; quedan 10 a 13 dígitos. */
 export const telefonoSchema = z
@@ -77,7 +67,7 @@ export const crearClienteSchema = z.object({
   telefono: telefonoSchema,
   correo: correoSchema,
   direccion: direccionSchema,
-  vendedor: vendedorSchema,
+  vendedor_id: vendedorIdSchema,
 });
 
 export const actualizarClienteSchema = z.object({
@@ -99,7 +89,7 @@ export type Cliente = {
   telefono: string;
   correo: string;
   direccion: string;
-  vendedor: string;
+  vendedor_id: string;
 };
 
 /** Cliente con el número de facturas abiertas, para el listado principal. */

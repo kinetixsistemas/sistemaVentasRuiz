@@ -24,3 +24,16 @@ export function textoRequerido(msg: string, max: number) {
     .min(1, msg)
     .max(max, `Máximo ${max} caracteres`);
 }
+
+/** Nombres de personas: solo letras (tildes, ñ), espacios y apóstrofes. */
+export function nombreSoloLetras(campo: string, max: number) {
+  return z
+    .string({ error: `${campo} es obligatorio` })
+    .trim()
+    .min(1, `${campo} es obligatorio`)
+    .max(max, `Máximo ${max} caracteres`)
+    .refine(
+      (v) => /^[A-Za-záéíóúüñÁÉÍÓÚÜÑ ']+$/.test(v),
+      `${campo} solo puede contener letras, espacios y apóstrofes`
+    );
+}

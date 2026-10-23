@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import {
   crearCliente,
@@ -10,6 +11,7 @@ import {
 import { obtenerEstadoCuenta } from "@/features/cobranza/actions";
 import type { EstadoCuenta, FacturaEstadoCuenta } from "@/features/cobranza/estado-cuenta";
 import type { Cliente, ClienteConCartera, ListarClientesResult } from "@/features/clientes/schemas";
+import type { Vendedor } from "@/features/vendedores/schemas";
 import { FacturaDetalleModal } from "@/features/ventas/components/factura-detalle-modal";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,6 +27,7 @@ import { ListSkeleton } from "@/components/ui/skeleton";
 import { Modal } from "@/components/ui/modal";
 import { Pagination } from "@/components/ui/pagination";
 import { SearchInput } from "@/components/ui/search-input";
+import { Select, type SelectOption } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
 import { fechaHoyISO } from "@/lib/dates";
@@ -37,7 +40,7 @@ const FORM_VACIO = {
   telefono: "",
   correo: "",
   direccion: "",
-  vendedor: "",
+  vendedor_id: "",
 };
 
 type ClienteForm = typeof FORM_VACIO;
@@ -74,11 +77,13 @@ function insertarOrdenado(lista: ClienteConCartera[], cliente: ClienteConCartera
 
 export function ClientesApp({
   datos,
+  vendedores,
   busquedaInicial = "",
   paginaInicial = 1,
   errorMensaje,
 }: {
   datos: ListarClientesResult;
+  vendedores: Vendedor[];
   /** Búsqueda leída de `?q=` para conservarla al recargar o compartir. */
   busquedaInicial?: string;
   /** Página leída de `?pagina=` para conservarla al recargar o compartir. */
@@ -110,6 +115,17 @@ export function ClientesApp({
   const [historialHasta, setHistorialHasta] = useState("");
   const [historialFiltro, setHistorialFiltro] = useState<FiltroHistorial>("todas");
   const [facturaDetalle, setFacturaDetalle] = useState<FacturaEstadoCuenta | null>(null);
+
+  const vendedoresOpciones: SelectOption[] = vendedores
+    .filter((v) => v.activo || v.id === form.vendedor_id)
+    .map((v) => ({
+      value: v.id,
+      label: v.activo ? v.nombre : `${v.nombre} (inactivo)`,
+    }));
+
+  function nombreVendedor(id: string): string {
+    return vendedores.find((v) => v.id === id)?.nombre ?? "";
+  }
 
   const rangoValido =
     historialDesde !== "" && historialHasta !== "" && historialDesde <= historialHasta;
@@ -201,7 +217,7 @@ export function ClientesApp({
       telefono: cliente.telefono,
       correo: cliente.correo,
       direccion: cliente.direccion,
-      vendedor: cliente.vendedor,
+      vendedor_id: cliente.vendedor_id,
     });
     setErrores({});
     setModalAbierto(true);
@@ -294,6 +310,9 @@ export function ClientesApp({
                   <p className="truncate text-label-lg text-on-surface">{cliente.nombre_juridico}</p>
                   <p className="truncate text-body-sm text-on-surface-variant tabular-nums">
                     {cliente.rif}
+                    {nombreVendedor(cliente.vendedor_id) && (
+                      <> · {nombreVendedor(cliente.vendedor_id)}</>
+                    )}
                     {cliente.facturas_pendientes > 0 && (
                       <>
                         {" · "}
@@ -371,16 +390,26 @@ export function ClientesApp({
               autoComplete="off"
               required
             />
-            <Input
-              label="Vendedor"
-              name="vendedor"
-              placeholder="Nombre del vendedor"
-              value={form.vendedor}
-              onChange={(e) => setCampo("vendedor", e.target.value)}
-              error={errores.vendedor}
-              icon="person"
-              required
-            />
+            <div className="flex flex-col gap-1.5">
+              <Select
+                label="Vendedor"
+                name="vendedor_id"
+                placeholder="Seleccionar vendedor…"
+                options={vendedoresOpciones}
+                value={form.vendedor_id}
+                onChange={(e) => setCampo("vendedor_id", e.target.value)}
+                error={errores.vendedor_id}
+                required
+              />
+              {vendedores.length === 0 && (
+                <Link
+                  href="/vendedores"
+                  className="text-body-sm text-primary hover:underline"
+                >
+                  Crear vendedor
+                </Link>
+              )}
+            </div>
           </div>
           <Input
             label="Nombre jurídico (razón social)"

@@ -56,6 +56,10 @@ function mensajeDuplicado(message: string): string {
   if (message.includes("facturas_numero_factura_key"))
     return "Ese número de factura ya existe";
   if (message.includes("productos_codigo_key")) return "El código ya existe";
+  if (message.includes("vendedores_nombre_norm_key"))
+    return "Ya existe un vendedor con ese nombre";
+  if (message.includes("comisiones_vendedor_factura_id_key"))
+    return "La comisión de esta factura ya fue registrada";
   return "Ya existe un registro con ese valor único.";
 }
 

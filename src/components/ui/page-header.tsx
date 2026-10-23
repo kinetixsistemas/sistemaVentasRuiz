@@ -17,11 +17,11 @@ export function PageHeader({ title, description, icon, action, className }: Page
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+        "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-green-500",
         className
       )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 border border-blue-500">
         <div className="flex items-center gap-2.5">
           {icon && (
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

@@ -215,7 +215,7 @@ export function ClientesApp({
       nombre_juridico: cliente.nombre_juridico,
       nombre_encargado: cliente.nombre_encargado,
       telefono: cliente.telefono,
-      correo: cliente.correo,
+      correo: cliente.correo ?? "",
       direccion: cliente.direccion,
       vendedor_id: cliente.vendedor_id,
     });
@@ -452,7 +452,6 @@ export function ClientesApp({
               onChange={(e) => setCampo("correo", e.target.value)}
               error={errores.correo}
               icon="mail"
-              required
             />
           </div>
           <Textarea
@@ -471,7 +470,7 @@ export function ClientesApp({
               className="mt-1 flex h-11 w-full items-center justify-center gap-2 rounded-lg text-label-lg text-error transition-colors hover:bg-error-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
             >
               <Icon name="delete" size={18} />
-              Eliminar cliente
+              Eliminar clientecorreo
             </button>
           )}
         </form>

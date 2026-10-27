@@ -11,7 +11,7 @@
  *   precacheada. Si tampoco existe, SIEMPRE se devuelve una Response válida:
  *   `respondWith` con `undefined` lanza "Failed to convert value to 'Response'".
  */
-const CACHE_SHELL = "kinetix-shell-v1";
+const CACHE_SHELL = "kinetix-shell-v2";
 const OFFLINE_URL = "/offline";
 const PRECACHE_URLS = [
   "/",

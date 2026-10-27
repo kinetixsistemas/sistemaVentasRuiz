@@ -139,6 +139,8 @@ export function VentasApp({
   const [descuento, setDescuento] = useState<DescuentoCampo>({ monto: "", pct: "", fuente: "monto" });
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, startGuardar] = useTransition();
+  const [modoManual, setModoManual] = useState(false);
+  const [montoManual, setMontoManual] = useState("");
 
   const clientesOpciones: SelectOption[] = clientes.map((c) => ({ value: c.id, label: c.nombre_juridico }));
   const productosOpciones: SelectOption[] = productos.map((p) => ({
@@ -146,12 +148,14 @@ export function VentasApp({
     label: `${p.codigo} — ${p.nombre}`,
   }));
 
-  const subtotal = calcularTotal(
+  const subtotalProductos = calcularTotal(
     items.map((i) => ({
       cantidad: Number(i.cantidad) || 0,
       precio_unitario_usd: Number(i.precio) || 0,
     }))
   );
+  const montoManualNum = numeroDeTexto(montoManual);
+  const subtotal = modoManual ? montoManualNum : subtotalProductos;
 
   // Descuento espejo: lo que el usuario escribe manda; el otro campo se deriva
   // del subtotal actual, así que se mantiene coherente si cambian los ítems.
@@ -297,13 +301,17 @@ export function VentasApp({
         condicion,
         dias_credito: condicion === "contado" ? 0 : Number(diasCredito),
         descuento_usd: descuentoMonto,
-        items: items
-          .filter((i) => i.producto_id && Number(i.cantidad) > 0)
-          .map((i) => ({
-            producto_id: i.producto_id,
-            cantidad: Number(i.cantidad),
-            precio_unitario_usd: Number(i.precio),
-          })),
+        modo_manual: modoManual,
+        monto_manual_usd: modoManual ? montoManualNum : undefined,
+        items: modoManual
+          ? []
+          : items
+              .filter((i) => i.producto_id && Number(i.cantidad) > 0)
+              .map((i) => ({
+                producto_id: i.producto_id,
+                cantidad: Number(i.cantidad),
+                precio_unitario_usd: Number(i.precio),
+              })),
       });
 
       if (!res.ok) {
@@ -318,6 +326,8 @@ export function VentasApp({
       setDiasCredito("7");
       setItems([ITEM_VACIO]);
       setDescuento({ monto: "", pct: "", fuente: "monto" });
+      setModoManual(false);
+      setMontoManual("");
       toast.success("Factura creada y stock descontado");
 
       // La factura recién creada es la más reciente: si estamos en la primera
@@ -579,65 +589,108 @@ export function VentasApp({
 
           <fieldset>
             <legend className="text-label-md text-on-surface-variant">Productos</legend>
-            <div className="mt-2 flex flex-col gap-3">
-              {items.map((item, idx) => {
-                const producto = productos.find((p) => p.id === item.producto_id);
-                return (
-                  <div key={idx} className="grid grid-cols-[1fr_5.5rem_7.5rem_auto] items-end gap-2">
-                    <Select
-                      label={idx === 0 ? "Producto" : undefined}
-                      name={`items.${idx}.producto_id`}
-                      value={item.producto_id}
-                      onChange={(e) => seleccionarProducto(idx, e.target.value)}
-                      options={productosOpciones}
-                      placeholder="Seleccionar…"
-                      aria-label="Producto"
-                    />
-                    <Input
-                      label={idx === 0 ? "Cant." : undefined}
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      autoComplete="off"
-                      value={item.cantidad}
-                      onChange={(e) => actualizarItem(idx, { cantidad: e.target.value.replace(/\D/g, "") })}
-                      aria-label="Cantidad"
-                    />
-                    <Input
-                      label={idx === 0 ? "Precio $" : undefined}
-                      type="text"
-                      inputMode="decimal"
-                      readOnly
-                      value={item.precio}
-                      error={errores[`items.${idx}.precio_unitario_usd`]}
-                      aria-label="Precio en USD (definido por el producto)"
-                      className="text-on-surface-variant"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
-                      aria-label="Quitar producto"
-                      disabled={items.length === 1}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container hover:text-error disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
-                    >
-                      <Icon name="delete" size={18} />
-                    </button>
-                    {producto && (
-                      <p className="col-span-4 -mt-1 text-body-sm text-on-surface-variant">
-                        Stock {producto.cantidad} u. ·{" "}
-                        {(Number(item.cantidad) || 0) * (Number(item.precio) || 0) !== 0 && (
-                          <span className="tabular-nums">{formatUsd((Number(item.cantidad) || 0) * (Number(item.precio) || 0))}</span>
-                        )}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-body-sm text-on-surface-variant">
+                {modoManual ? "Factura sin productos, monto manual" : "Factura con productos del inventario"}
+              </p>
+              <Button
+                type="button"
+                variant={modoManual ? "primary" : "secondary"}
+                size="sm"
+                style={modoManual ? { backgroundColor: "#f97316", color: "#fff" } : undefined}
+                className={modoManual ? "hover:opacity-90" : ""}
+                onClick={() => {
+                  setModoManual((v) => {
+                    const next = !v;
+                    if (next) {
+                      setItems([ITEM_VACIO]);
+                    } else {
+                      setMontoManual("");
+                    }
+                    return next;
+                  });
+                }}
+              >
+                {modoManual ? "Usar productos" : "Factura sin productos"}
+              </Button>
             </div>
-            <Button type="button" variant="secondary" size="sm" icon="add" onClick={agregarItem} className="mt-3">
-              Agregar producto
-            </Button>
-            {errores.items && <InlineAlert className="mt-2">{errores.items}</InlineAlert>}
+            {modoManual ? (
+              <div className="mt-2 flex flex-col gap-2">
+                <Input
+                  label="Monto total de la factura ($)"
+                  name="monto_manual_usd"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0,00"
+                  value={montoManual}
+                  onChange={(e) => setMontoManual(e.target.value.replace(/[^0-9.,]/g, ""))}
+                  error={errores.monto_manual_usd}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="mt-2 flex flex-col gap-3">
+                  {items.map((item, idx) => {
+                    const producto = productos.find((p) => p.id === item.producto_id);
+                    return (
+                      <div key={idx} className="grid grid-cols-[1fr_5.5rem_7.5rem_auto] items-end gap-2">
+                        <Select
+                          label={idx === 0 ? "Producto" : undefined}
+                          name={`items.${idx}.producto_id`}
+                          value={item.producto_id}
+                          onChange={(e) => seleccionarProducto(idx, e.target.value)}
+                          options={productosOpciones}
+                          placeholder="Seleccionar…"
+                          aria-label="Producto"
+                        />
+                        <Input
+                          label={idx === 0 ? "Cant." : undefined}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          autoComplete="off"
+                          value={item.cantidad}
+                          onChange={(e) => actualizarItem(idx, { cantidad: e.target.value.replace(/\D/g, "") })}
+                          aria-label="Cantidad"
+                        />
+                        <Input
+                          label={idx === 0 ? "Precio $" : undefined}
+                          type="text"
+                          inputMode="decimal"
+                          readOnly
+                          value={item.precio}
+                          error={errores[`items.${idx}.precio_unitario_usd`]}
+                          aria-label="Precio en USD (definido por el producto)"
+                          className="text-on-surface-variant"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
+                          aria-label="Quitar producto"
+                          disabled={items.length === 1}
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-on-surface-variant transition-colors hover:bg-error-container hover:text-error disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+                        >
+                          <Icon name="delete" size={18} />
+                        </button>
+                        {producto && (
+                          <p className="col-span-4 -mt-1 text-body-sm text-on-surface-variant">
+                            Stock {producto.cantidad} u. ·{" "}
+                            {(Number(item.cantidad) || 0) * (Number(item.precio) || 0) !== 0 && (
+                              <span className="tabular-nums">{formatUsd((Number(item.cantidad) || 0) * (Number(item.precio) || 0))}</span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <Button type="button" variant="secondary" size="sm" icon="add" onClick={agregarItem} className="mt-3">
+                  Agregar producto
+                </Button>
+                {errores.items && <InlineAlert className="mt-2">{errores.items}</InlineAlert>}
+              </>
+            )}
           </fieldset>
 
           <div className="grid gap-4 sm:grid-cols-2">

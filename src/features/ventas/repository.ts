@@ -61,7 +61,6 @@ function mapearFacturaConSaldo(fila: VistaSeleccion): FacturaConSaldo {
   };
 }
 
-/** Crea la factura llamando a la RPC `crear_factura` (total y stock en la BD). */
 export async function crearFacturaRepo(input: CrearFacturaInput): Promise<string> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("crear_factura", {
@@ -69,12 +68,14 @@ export async function crearFacturaRepo(input: CrearFacturaInput): Promise<string
     p_numero_factura: input.numero_factura,
     p_condicion: input.condicion,
     p_dias_credito: input.dias_credito,
-    p_items: input.items.map((item) => ({
+    p_items: input.modo_manual ? [] : input.items.map((item) => ({
       producto_id: item.producto_id,
       cantidad: item.cantidad,
       precio_unitario_usd: round2(item.precio_unitario_usd),
     })),
     p_descuento_usd: round2(input.descuento_usd),
+    p_modo_manual: input.modo_manual ?? false,
+    p_monto_manual_usd: input.modo_manual && input.monto_manual_usd !== undefined ? round2(input.monto_manual_usd) : null,
   });
   if (error) throw error;
   return data;
@@ -90,7 +91,6 @@ export async function listarFacturasRepo(input: ListarFacturasInput): Promise<Li
   if (input.fecha_hasta) consulta = consulta.lte("fecha_emision", input.fecha_hasta);
   if (input.estado && input.estado !== "todas") consulta = consulta.eq("estado", input.estado);
 
-  // Búsqueda resuelta en la BD (no se descarga todo el histórico para filtrar).
   if (input.busqueda) {
     const patron = escaparFiltroPostgrest(`%${input.busqueda}%`);
     consulta = consulta.or(
@@ -110,7 +110,6 @@ export async function listarFacturasRepo(input: ListarFacturasInput): Promise<Li
   };
 }
 
-/** Una factura con su saldo (para reflejarla en la lista sin recargarla). */
 export async function obtenerFacturaConSaldoRepo(id: string): Promise<FacturaConSaldo> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -122,7 +121,6 @@ export async function obtenerFacturaConSaldoRepo(id: string): Promise<FacturaCon
   return mapearFacturaConSaldo(data);
 }
 
-/** KPIs de cartera agregados en la BD (evita transferir todas las facturas). */
 export async function resumenCarteraRepo(): Promise<ResumenCartera> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("resumen_cartera");
@@ -130,7 +128,6 @@ export async function resumenCarteraRepo(): Promise<ResumenCartera> {
   return data as ResumenCartera;
 }
 
-/** Totales vendidos y recaudados del período, sumados en la BD. */
 export async function resumenVentasPeriodoRepo(input: ResumenVentasInput): Promise<ResumenVentas> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("resumen_ventas_periodo", {
@@ -141,12 +138,9 @@ export async function resumenVentasPeriodoRepo(input: ResumenVentasInput): Promi
   return data as ResumenVentas;
 }
 
-/** Factura con ítems (con datos del producto), pagos y datos del cliente. */
 export async function obtenerFacturaDetalleRepo(id: string): Promise<FacturaDetalle> {
   const supabase = await createSupabaseServerClient();
 
-  // El cliente se trae embebido en la factura y los tres consultas corren en
-  // paralelo: antes eran 4 viajes secuenciales a la base de datos.
   const [facturaRes, itemsRes, pagosRes] = await Promise.all([
     supabase
       .from("facturas")

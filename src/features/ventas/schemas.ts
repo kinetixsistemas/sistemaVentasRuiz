@@ -3,10 +3,8 @@ import { numeroRequerido } from "@/lib/zod-helpers";
 import { montoConDosDecimales, round2 } from "@/lib/currency";
 import type { CondicionFactura, EstadoFactura, MetodoPago, MonedaPago } from "@/types/database";
 
-/** Regla centralizada del formato del número de factura de la empresa. */
 export const MAX_LONGITUD_NUMERO_FACTURA = 20;
 
-/** Número de factura: obligatorio, alfanumérico con guiones, se normaliza a mayúsculas. */
 export const numeroFacturaSchema = z
   .string({ error: "El número de factura es obligatorio" })
   .trim()
@@ -21,7 +19,6 @@ export const numeroFacturaSchema = z
 const clienteIdSchema = z.string().uuid("Identificador de cliente inválido");
 const productoIdSchema = z.string().uuid("Seleccione un producto válido");
 
-/** Ítem de factura: cantidad entera > 0 y precio ≥ 0 (máximo 2 decimales). */
 export const itemFacturaSchema = z.object({
   producto_id: productoIdSchema,
   cantidad: numeroRequerido("La cantidad es obligatoria", "La cantidad debe ser un número").pipe(
@@ -62,7 +59,9 @@ export const crearFacturaSchema = z
         .min(0, "El descuento no puede ser negativo")
         .refine((v) => montoConDosDecimales(v), "El descuento admite máximo 2 decimales")
     ),
-    items: z.array(itemFacturaSchema).min(1, "Agregue al menos un producto a la factura"),
+    items: z.array(itemFacturaSchema).default([]),
+    modo_manual: z.boolean().optional().default(false),
+    monto_manual_usd: z.number().optional(),
   })
   .superRefine((factura, ctx) => {
     if (factura.condicion === "contado" && factura.dias_credito !== 0) {
@@ -78,6 +77,42 @@ export const crearFacturaSchema = z
         path: ["dias_credito"],
         message: "Los días de crédito deben ser 7, 15 o 30",
       });
+    }
+
+    if (factura.modo_manual) {
+      if (factura.monto_manual_usd === undefined || factura.monto_manual_usd === null) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["monto_manual_usd"],
+          message: "El monto de la factura es obligatorio",
+        });
+        return;
+      }
+      if (factura.monto_manual_usd <= 0) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["monto_manual_usd"],
+          message: "El monto debe ser mayor a 0",
+        });
+        return;
+      }
+      if (factura.descuento_usd > factura.monto_manual_usd) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["descuento_usd"],
+          message: "El descuento no puede superar el monto de la factura",
+        });
+      }
+      return;
+    }
+
+    if (!factura.items || factura.items.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["items"],
+        message: "Agregue al menos un producto a la factura",
+      });
+      return;
     }
     if (factura.descuento_usd > calcularTotal(factura.items)) {
       ctx.addIssue({
@@ -109,7 +144,6 @@ export const obtenerFacturaSchema = z.object({
   id: z.string().uuid("Identificador de factura inválido"),
 });
 
-/** Período (inclusive) para los KPIs de ventas por mes. */
 export const resumenVentasSchema = z
   .object({
     desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
@@ -117,10 +151,6 @@ export const resumenVentasSchema = z
   })
   .refine((p) => p.desde <= p.hasta, "El período no es válido");
 
-/**
- * Calcula el total de una factura en USD (solo previsualización).
- * El total oficial SIEMPRE lo calcula la base de datos en la RPC `crear_factura`.
- */
 export function calcularTotal(
   items: Array<{ cantidad: number; precio_unitario_usd: number }>
 ): number {
@@ -133,7 +163,6 @@ export type ListarFacturasInput = z.infer<typeof listarFacturasSchema>;
 export type ObtenerFacturaInput = z.infer<typeof obtenerFacturaSchema>;
 export type ResumenVentasInput = z.infer<typeof resumenVentasSchema>;
 
-/** Fila de la vista facturas_con_saldo (listados de ventas y cobranza). */
 export type FacturaConSaldo = {
   id: string;
   numero_factura: string;
@@ -152,7 +181,6 @@ export type FacturaConSaldo = {
   dias_mora: number;
 };
 
-/** Página de facturas más el total de coincidencias del filtro. */
 export type ListarFacturasResult = {
   facturas: FacturaConSaldo[];
   total: number;
@@ -193,7 +221,6 @@ export type FacturaDetalle = {
   pagos: PagoFactura[];
 };
 
-/** KPIs de cartera calculados en la BD (RPC `resumen_cartera`). */
 export type ResumenCartera = {
   por_cobrar_usd: number;
   facturas_abiertas: number;
@@ -203,7 +230,6 @@ export type ResumenCartera = {
   facturas_por_vencer: number;
 };
 
-/** KPIs de ventas de un período (RPC `resumen_ventas_periodo`). */
 export type ResumenVentas = {
   total_vendido_usd: number;
   total_recaudado_usd: number;

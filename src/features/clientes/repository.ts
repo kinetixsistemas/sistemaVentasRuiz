@@ -36,7 +36,7 @@ function mapearCliente(fila: ClienteSeleccion): Cliente {
     nombre_juridico: fila.nombre_juridico,
     nombre_encargado: fila.nombre_encargado,
     telefono: fila.telefono,
-    correo: fila.correo,
+    correo: fila.correo ?? null,
     direccion: fila.direccion,
     vendedor_id: fila.vendedor_id,
   };
@@ -110,22 +110,40 @@ export async function obtenerClienteRepo(id: string): Promise<Cliente> {
 
 export async function crearClienteRepo(input: CrearClienteInput): Promise<Cliente> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.from("clientes").insert({ ...input }).select(COLUMNAS).single();
+  const payload: any = { ...(input as any) };
+  payload.correo = payload.correo ?? null;
+  const { data, error } = await supabase
+    .from("clientes")
+    .insert(payload)
+    .select(COLUMNAS)
+    .single();
   if (error) throw error;
-  return mapearCliente(data);
+  return mapearCliente(data as ClienteSeleccion);
 }
 
 export async function actualizarClienteRepo(input: ActualizarClienteInput): Promise<Cliente> {
   const supabase = await createSupabaseServerClient();
   const { id, ...resto } = input;
+  const restoAny = resto as any;
+  const payload: any = { ...restoAny };
+  if ("correo" in payload) {
+    const c = payload.correo;
+    if (c === undefined) {
+      delete payload.correo;
+    } else if (c === null || c === "") {
+      payload.correo = null;
+    } else {
+      payload.correo = c;
+    }
+  }
   const { data, error } = await supabase
     .from("clientes")
-    .update({ ...resto })
+    .update(payload)
     .eq("id", id)
     .select(COLUMNAS)
     .single();
   if (error) throw error;
-  return mapearCliente(data);
+  return mapearCliente(data as ClienteSeleccion);
 }
 
 export async function eliminarClienteRepo(id: string): Promise<void> {

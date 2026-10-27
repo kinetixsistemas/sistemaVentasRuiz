@@ -46,13 +46,22 @@ export const telefonoSchema = z
     "El teléfono debe tener entre 10 y 13 dígitos"
   );
 
-/** Correo: formato válido y en minúsculas. */
+/** Correo: opcional. Si se indica debe tener formato válido y en minúsculas. */
 export const correoSchema = z
-  .string({ error: "El correo es obligatorio" })
-  .trim()
-  .min(1, "El correo es obligatorio")
-  .pipe(z.email("El correo debe tener un formato válido"))
-  .transform((v) => v.toLowerCase());
+  .union([
+    z
+      .string()
+      .trim()
+      .min(1, "El correo debe tener un formato válido")
+      .pipe(z.email("El correo debe tener un formato válido"))
+      .transform((v) => v.toLowerCase()),
+    z.literal(""),
+  ])
+  .optional()
+  .transform((v) => {
+    if (!v || (typeof v === "string" && v.trim() === "")) return null;
+    return typeof v === "string" ? v.trim().toLowerCase() : null;
+  });
 
 export const direccionSchema = z
   .string({ error: "La dirección es obligatoria" })
@@ -87,7 +96,7 @@ export type Cliente = {
   nombre_juridico: string;
   nombre_encargado: string;
   telefono: string;
-  correo: string;
+  correo: string | null;
   direccion: string;
   vendedor_id: string;
 };

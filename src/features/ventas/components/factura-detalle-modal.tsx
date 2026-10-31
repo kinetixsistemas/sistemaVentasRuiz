@@ -1,16 +1,28 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { obtenerFactura } from "@/features/ventas/actions";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { actualizarComisionFactura, obtenerFactura } from "@/features/ventas/actions";
 import type { FacturaDetalle } from "@/features/ventas/schemas";
 import type { EstadoFactura } from "@/types/database";
+import { round2 } from "@/lib/currency";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/components/ui/cn";
 import { EstadoChip } from "@/components/ui/estado-chip";
 import { Icon } from "@/components/ui/icon";
 import { InlineAlert } from "@/components/ui/inline-alert";
+import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { formatFecha, formatUsd, labelCondicion, labelMetodoPago } from "@/components/ui/format";
+
+function numeroDeTexto(valor: string): number {
+  const n = Number(valor.replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatPct(valor: number): string {
+  return `${valor.toLocaleString("es-VE", { maximumFractionDigits: 2 })}%`;
+}
 
 /** Resumen de la factura (vista) que el modal muestra de inmediato. */
 export type FacturaResumenModal = {
@@ -45,6 +57,12 @@ export function FacturaDetalleModal({
     detalle: FacturaDetalle | null;
     error: string | null;
   } | null>(null);
+  const [editandoComision, setEditandoComision] = useState(false);
+  const [comisionPct, setComisionPct] = useState("");
+  const [comisionUsd, setComisionUsd] = useState("");
+  const [comisionFuente, setComisionFuente] = useState<"pct" | "monto">("pct");
+  const [errorComision, setErrorComision] = useState<string | null>(null);
+  const [guardandoComision, startGuardarComision] = useTransition();
 
   const facturaId = factura?.id ?? null;
 
@@ -68,9 +86,71 @@ export function FacturaDetalleModal({
   const detalle = resultado?.facturaId === facturaId ? resultado.detalle : null;
   const error = resultado?.facturaId === facturaId ? resultado.error : null;
 
+  const totalComisionBase = detalle?.total_usd ?? 0;
+  const comisionVista =
+    comisionFuente === "pct"
+      ? {
+          pct: comisionPct,
+          monto:
+            comisionPct.trim() === ""
+              ? ""
+              : String(round2((totalComisionBase * numeroDeTexto(comisionPct)) / 100)),
+        }
+      : {
+          monto: comisionUsd,
+          pct:
+            totalComisionBase > 0 && comisionUsd.trim() !== ""
+              ? String(round2((numeroDeTexto(comisionUsd) / totalComisionBase) * 100))
+              : "",
+        };
+
   function cerrar() {
     setResultado(null);
+    setEditandoComision(false);
+    setErrorComision(null);
     onClose();
+  }
+
+  function abrirEditorComision() {
+    if (!detalle) return;
+    setComisionPct(String(detalle.comision_pct));
+    setComisionUsd(String(detalle.comision_usd));
+    setComisionFuente("pct");
+    setErrorComision(null);
+    setEditandoComision(true);
+  }
+
+  function guardarComision(evento: React.FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    if (!detalle) return;
+    setErrorComision(null);
+    const pct = numeroDeTexto(comisionVista.pct);
+    const usd = numeroDeTexto(comisionVista.monto);
+
+    startGuardarComision(async () => {
+      const res = await actualizarComisionFactura({
+        id: detalle.id,
+        comision_pct: pct,
+        comision_usd: usd,
+      });
+      if (!res.ok) {
+        setErrorComision(res.error.message);
+        return;
+      }
+      setResultado((prev) =>
+        prev?.detalle
+          ? {
+              ...prev,
+              detalle: {
+                ...prev.detalle,
+                comision_pct: res.data.comision_pct,
+                comision_usd: res.data.comision_usd,
+              },
+            }
+          : prev
+      );
+      setEditandoComision(false);
+    });
   }
 
   return (
@@ -156,6 +236,95 @@ export function FacturaDetalleModal({
                     {formatUsd(factura.saldo_usd)}
                   </p>
                 </Card>
+              </div>
+
+              <div className="rounded-lg bg-surface-container px-3.5 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-label-sm text-on-surface-variant">Comisión del vendedor</p>
+                    <p className="text-label-lg tabular-nums text-on-surface">
+                      {formatUsd(detalle.comision_usd)}{" "}
+                      <span className="text-body-sm text-on-surface-variant">
+                        ({formatPct(detalle.comision_pct)})
+                      </span>
+                    </p>
+                    {detalle.comision_usd <= 0 && (
+                      <p className="text-body-sm text-on-surface-variant">
+                        Sin comisión asignada. Se puede agregar ahora.
+                      </p>
+                    )}
+                  </div>
+                  {detalle.comision_pagada ? (
+                    <span className="shrink-0 rounded-full bg-status-pagada-bg px-2.5 py-1 text-label-md text-status-pagada-text">
+                      Pagada
+                    </span>
+                  ) : (
+                    !editandoComision && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        icon="edit"
+                        onClick={abrirEditorComision}
+                      >
+                        Editar
+                      </Button>
+                    )
+                  )}
+                </div>
+
+                {editandoComision && !detalle.comision_pagada && (
+                  <form onSubmit={guardarComision} className="mt-3 border-t border-outline-variant pt-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Input
+                        label="Comisión (%)"
+                        name="comision_pct"
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={comisionVista.pct}
+                        onChange={(e) => {
+                          setComisionFuente("pct");
+                          setComisionPct(e.target.value.replace(/[^0-9.,]/g, ""));
+                        }}
+                        aria-label="Comisión en porcentaje"
+                      />
+                      <Input
+                        label="Comisión ($)"
+                        name="comision_usd"
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        value={comisionVista.monto}
+                        onChange={(e) => {
+                          setComisionFuente("monto");
+                          setComisionUsd(e.target.value.replace(/[^0-9.,]/g, ""));
+                        }}
+                        aria-label="Comisión en dólares"
+                      />
+                    </div>
+                    {errorComision && (
+                      <InlineAlert className="mt-2">{errorComision}</InlineAlert>
+                    )}
+                    <div className="mt-3 flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={guardandoComision}
+                        onClick={() => {
+                          setEditandoComision(false);
+                          setErrorComision(null);
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button type="submit" size="sm" loading={guardandoComision}>
+                        Guardar comisión
+                      </Button>
+                    </div>
+                  </form>
+                )}
               </div>
 
               {factura.saldo_usd <= 0.005 ? (

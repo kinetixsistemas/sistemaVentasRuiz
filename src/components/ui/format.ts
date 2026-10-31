@@ -45,6 +45,7 @@ export const ESTADO_LABEL: Record<EstadoFactura, string> = {
   vencida: "Vencida",
   por_vencer: "Por vencer",
   pendiente: "Pendiente",
+  anulada: "Anulada",
 };
 
 export function labelMetodoPago(metodo: MetodoPago): string {

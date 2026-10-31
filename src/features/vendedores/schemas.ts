@@ -71,7 +71,6 @@ export const historialVendedorSchema = z.object({
 export const pagarComisionVendedorSchema = z
   .object({
     factura_id: z.string().uuid("Identificador de factura inválido"),
-    comision_pct: comisionPctSchema.refine((n) => n > 0, "Ingresa un porcentaje mayor a 0"),
     metodo: z.enum(metodosPagoComision, { error: "Método de pago inválido" }),
     monto: z.coerce
       .number({ error: "El monto debe ser un número" })
@@ -188,6 +187,8 @@ export type FacturaVendedor = {
   saldo_usd: number;
   estado: EstadoFactura;
   dias_mora: number;
+  comision_pct: number;
+  comision_usd: number;
   comision: ComisionVendedor | null;
 };
 

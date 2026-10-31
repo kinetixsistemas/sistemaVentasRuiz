@@ -128,7 +128,6 @@ export function VendedoresApp({
   const solicitudHistorialRef = useRef(0);
 
   const [comisionFactura, setComisionFactura] = useState<FacturaVendedor | null>(null);
-  const [pctComision, setPctComision] = useState("");
   const [metodoPago, setMetodoPago] = useState<MetodoPagoComision>("efectivo");
   const [montoPago, setMontoPago] = useState("");
   const [tasaCambio, setTasaCambio] = useState("");
@@ -150,11 +149,7 @@ export function VendedoresApp({
   const comisionTotal = vendedores.reduce((total, v) => total + v.comision_total_usd, 0);
   const filtrando = busqueda.trim() !== "";
 
-  const pctComisionNum = Number(pctComision.trim().replace(",", "."));
-  const montoComision =
-    comisionFactura && Number.isFinite(pctComisionNum)
-      ? round2((comisionFactura.total_usd * pctComisionNum) / 100)
-      : 0;
+  const montoComision = comisionFactura?.comision_usd ?? 0;
 
   const esBs = metodoPago === "bs";
   const esDigital = metodoPago === "zelle" || metodoPago === "binance";
@@ -235,9 +230,8 @@ export function VendedoresApp({
 
   function abrirPagoComision(factura: FacturaVendedor) {
     setComisionFactura(factura);
-    setPctComision("");
     setMetodoPago("efectivo");
-    setMontoPago("");
+    setMontoPago(factura.comision_usd > 0 ? String(round2(factura.comision_usd)) : "");
     setTasaCambio("");
     setReferencia("");
     setCorreo("");
@@ -247,7 +241,6 @@ export function VendedoresApp({
 
   function cerrarPagoComision() {
     setComisionFactura(null);
-    setPctComision("");
     setMetodoPago("efectivo");
     setMontoPago("");
     setTasaCambio("");
@@ -268,7 +261,6 @@ export function VendedoresApp({
     startPagarComision(async () => {
       const payload: Record<string, unknown> = {
         factura_id: comisionFactura.factura_id,
-        comision_pct: pctComision,
         metodo: metodoPago,
         monto: montoPago,
         fecha: fechaPago,
@@ -501,7 +493,7 @@ export function VendedoresApp({
                       sub={`${vendedor.comisiones_pagadas} comisiones registradas`}
                     />
                     <Dato
-                      label="Pendiente estimada"
+                      label="Pendiente asignada"
                       value={formatUsd(vendedor.comision_pendiente_usd)}
                       sub={`${vendedor.pagadas_total} de ${vendedor.facturas_total} facturas pagadas`}
                     />
@@ -598,8 +590,8 @@ export function VendedoresApp({
             onChange={(e) => setCampo("activo", e.target.value === "true")}
           />
           <p className="rounded-lg bg-surface-container p-3 text-body-sm text-on-surface-variant">
-            El porcentaje se usa para estimar comisiones pendientes. Las comisiones ya pagadas
-            conservan su porcentaje y monto.
+            El porcentaje se usa para asignar comisiones a las nuevas facturas. Las facturas ya
+            emitidas conservan su porcentaje y monto.
           </p>
         </form>
       </Modal>
@@ -631,7 +623,7 @@ export function VendedoresApp({
                 value={formatUsd(vendedorHistorial.comision_pagada_usd)}
               />
               <Dato
-                label="Pendiente estimada"
+                label="Pendiente asignada"
                 value={formatUsd(vendedorHistorial.comision_pendiente_usd)}
               />
               <Dato label="Facturas pagadas" value={vendedorHistorial.pagadas_total} />
@@ -639,8 +631,8 @@ export function VendedoresApp({
             </div>
 
             <p className="rounded-lg bg-surface-container p-3 text-body-sm text-on-surface-variant">
-              El porcentaje se define por factura al pagar la comisión. El monto queda congelado;
-              cambiar el % del vendedor no afecta pagos anteriores.
+              El porcentaje y el monto se asignan al crear la factura. Cambiar el % del vendedor
+              no afecta facturas ya emitidas.
             </p>
 
             {cargandoHistorial && facturasHistorial.length === 0 ? (
@@ -661,10 +653,8 @@ export function VendedoresApp({
                 >
                   {facturasHistorial.map((factura) => {
                     const comision = factura.comision;
-                    const comisionPendiente = round2(
-                      (factura.total_usd * vendedorHistorial.comision_pct) / 100
-                    );
                     const facturaPagada = factura.saldo_usd <= TOLERANCIA_SALDO;
+                    const tieneComision = factura.comision_usd > 0;
 
                     return (
                       <li key={factura.factura_id} className="p-3 sm:p-4">
@@ -708,29 +698,38 @@ export function VendedoresApp({
                               Pagada
                             </span>
                           </>
-                        ) : facturaPagada ? (
+                        ) : tieneComision ? (
                           <>
                             <div>
                               <p className="text-label-sm text-on-surface-variant">
-                                Comisión pendiente
+                                Comisión asignada
                               </p>
-                              <p className="text-body-sm text-on-surface-variant">
-                                Estimación con % base: {formatPct(vendedorHistorial.comision_pct)} ·{" "}
-                                {formatUsd(comisionPendiente)}
+                              <p className="text-label-lg tabular-nums text-on-surface">
+                                {formatUsd(factura.comision_usd)}{" "}
+                                <span className="text-body-sm text-on-surface-variant">
+                                  ({formatPct(factura.comision_pct)})
+                                </span>
                               </p>
+                              {!facturaPagada && (
+                                <p className="text-body-sm text-on-surface-variant">
+                                  Disponible cuando la factura esté totalmente pagada. Saldo:{" "}
+                                  {formatUsd(factura.saldo_usd)}
+                                </p>
+                              )}
                             </div>
-                            <Button
-                              size="sm"
-                              onClick={() => abrirPagoComision(factura)}
-                              icon="payments"
-                            >
-                              Pagar comisión
-                            </Button>
+                            {facturaPagada && (
+                              <Button
+                                size="sm"
+                                onClick={() => abrirPagoComision(factura)}
+                                icon="payments"
+                              >
+                                Pagar comisión
+                              </Button>
+                            )}
                           </>
                         ) : (
                           <p className="text-body-sm text-on-surface-variant">
-                            Disponible cuando la factura esté totalmente pagada. Saldo:{" "}
-                            {formatUsd(factura.saldo_usd)}
+                            Esta factura no tiene comisión asignada.
                           </p>
                         )}
                         </div>
@@ -794,34 +793,22 @@ export function VendedoresApp({
                 {comisionFactura.numero_factura} · {comisionFactura.nombre_juridico}
               </p>
               <p className="text-body-sm tabular-nums text-on-surface-variant">
-                Base a aplicar: {formatUsd(comisionFactura.total_usd)}
+                Total factura: {formatUsd(comisionFactura.total_usd)} · Comisión asignada:{" "}
+                {formatPct(comisionFactura.comision_pct)}
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input
-                label="Porcentaje de comisión (%)"
-                name="comision_pct"
-                inputMode="decimal"
-                placeholder="0,00"
-                value={pctComision}
-                onChange={(e) => setPctComision(e.target.value)}
-                error={erroresComision.comision_pct}
-                hint="Se aplica a la factura."
-                autoComplete="off"
-              />
-              <Input
-                label="Fecha de pago"
-                name="fecha"
-                type="date"
-                value={fechaPago}
-                onChange={(e) => setFechaPago(e.target.value)}
-                error={erroresComision.fecha}
-              />
-            </div>
+            <Input
+              label="Fecha de pago"
+              name="fecha"
+              type="date"
+              value={fechaPago}
+              onChange={(e) => setFechaPago(e.target.value)}
+              error={erroresComision.fecha}
+            />
 
             <div className="rounded-lg bg-primary/5 p-3">
-              <p className="text-label-sm text-primary">Comisión a pagar</p>
+              <p className="text-label-sm text-primary">Comisión asignada a pagar</p>
               <p className="mt-0.5 text-numeric-currency tabular-nums text-primary">
                 {formatUsd(montoComision)}
               </p>
@@ -833,7 +820,13 @@ export function VendedoresApp({
               options={[...METODOS_PAGO]}
               value={metodoPago}
               onChange={(e) => {
-                setMetodoPago(e.target.value as MetodoPagoComision);
+                const nuevoMetodo = e.target.value as MetodoPagoComision;
+                setMetodoPago(nuevoMetodo);
+                setMontoPago(
+                  nuevoMetodo === "bs" || !comisionFactura
+                    ? ""
+                    : String(round2(comisionFactura.comision_usd))
+                );
                 setErroresComision({});
               }}
               error={erroresComision.metodo}
@@ -901,8 +894,8 @@ export function VendedoresApp({
             )}
 
             <p className="text-body-sm text-on-surface-variant">
-              El porcentaje y el monto en USD quedan congelados en esta factura. El detalle del
-              pago se guarda como en el cobro de facturas.
+              El monto asignado a esta factura no cambia. El detalle del pago se guarda como en el
+              cobro de facturas.
             </p>
           </form>
         )}

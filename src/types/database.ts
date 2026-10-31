@@ -22,7 +22,7 @@ export type Json =
 export type CondicionFactura = "contado" | "credito";
 export type MetodoPago = "bs" | "efectivo" | "zelle" | "binance";
 export type MonedaPago = "VES" | "USD";
-export type EstadoFactura = "pagada" | "vencida" | "por_vencer" | "pendiente";
+export type EstadoFactura = "pagada" | "vencida" | "por_vencer" | "pendiente" | "anulada";
 export type RolUsuario = "admin" | "vendedor";
 
 export interface Database {
@@ -89,7 +89,7 @@ export interface Database {
           nombre_juridico: string;
           nombre_encargado: string;
           telefono: string;
-          correo: string;
+          correo: string | null;
           direccion: string;
           vendedor_id: string;
           created_at: string;
@@ -101,7 +101,7 @@ export interface Database {
           nombre_juridico: string;
           nombre_encargado: string;
           telefono: string;
-          correo: string;
+          correo?: string | null;
           direccion: string;
           vendedor_id: string;
           created_at?: string;
@@ -113,7 +113,7 @@ export interface Database {
           nombre_juridico?: string;
           nombre_encargado?: string;
           telefono?: string;
-          correo?: string;
+          correo?: string | null;
           direccion?: string;
           vendedor_id?: string;
           created_at?: string;
@@ -218,6 +218,10 @@ export interface Database {
           total_usd: number;
           descuento_usd: number;
           total_pagado_usd: number;
+          comision_pct: number;
+          comision_usd: number;
+          anulada_at: string | null;
+          anulada_motivo: string | null;
           created_at: string;
         };
         Insert: {
@@ -232,6 +236,10 @@ export interface Database {
           total_usd: number;
           descuento_usd?: number;
           total_pagado_usd?: number;
+          comision_pct?: number;
+          comision_usd?: number;
+          anulada_at?: string | null;
+          anulada_motivo?: string | null;
           created_at?: string;
         };
         Update: {
@@ -246,6 +254,10 @@ export interface Database {
           total_usd?: number;
           descuento_usd?: number;
           total_pagado_usd?: number;
+          comision_pct?: number;
+          comision_usd?: number;
+          anulada_at?: string | null;
+          anulada_motivo?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -409,6 +421,11 @@ export interface Database {
           dias_mora: number;
           created_at: string;
           vendedor_id: string;
+          numero_orden: number;
+          comision_pct: number;
+          comision_usd: number;
+          anulada_at: string | null;
+          anulada_motivo: string | null;
         };
         Insert: never;
         Update: never;
@@ -423,9 +440,47 @@ export interface Database {
           p_condicion: string;
           p_dias_credito: number;
           p_items: Json;
-          p_descuento_usd: number;
+          p_descuento_usd?: number;
+          p_modo_manual?: boolean;
+          p_monto_manual_usd?: number | null;
+          p_comision_pct?: number | null;
+          p_comision_usd?: number | null;
         };
         Returns: string;
+      };
+      actualizar_comision_factura: {
+        Args: {
+          p_factura_id: string;
+          p_comision_pct: number;
+          p_comision_usd: number;
+        };
+        Returns: Array<{
+          comision_pct: number;
+          comision_usd: number;
+        }>;
+      };
+      editar_factura: {
+        Args: {
+          p_factura_id: string;
+          p_cliente_id: string;
+          p_numero_factura: string;
+          p_condicion: string;
+          p_dias_credito: number;
+          p_items: Json;
+          p_descuento_usd?: number;
+          p_modo_manual?: boolean;
+          p_monto_manual_usd?: number | null;
+          p_comision_pct?: number | null;
+          p_comision_usd?: number | null;
+        };
+        Returns: string;
+      };
+      anular_factura: {
+        Args: {
+          p_factura_id: string;
+          p_motivo?: string | null;
+        };
+        Returns: undefined;
       };
       registrar_pago: {
         Args: {
@@ -520,7 +575,6 @@ export interface Database {
       pagar_comision_vendedor: {
         Args: {
           p_factura_id: string;
-          p_comision_pct: number;
           p_metodo: string;
           p_monto: number;
           p_tasa?: number | null;

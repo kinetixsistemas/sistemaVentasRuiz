@@ -62,8 +62,29 @@ export const crearFacturaSchema = z
     items: z.array(itemFacturaSchema).default([]),
     modo_manual: z.boolean().optional().default(false),
     monto_manual_usd: z.number().optional(),
+    comision_pct: z
+      .number()
+      .min(0, "La comisión no puede ser negativa")
+      .max(100, "La comisión no puede superar 100")
+      .refine((v) => montoConDosDecimales(v), "La comisión admite máximo 2 decimales")
+      .optional(),
+    comision_usd: z
+      .number()
+      .min(0, "La comisión no puede ser negativa")
+      .refine((v) => montoConDosDecimales(v), "La comisión admite máximo 2 decimales")
+      .optional(),
   })
   .superRefine((factura, ctx) => {
+    const tienePct = factura.comision_pct !== undefined;
+    const tieneMonto = factura.comision_usd !== undefined;
+    if (tienePct !== tieneMonto) {
+      ctx.addIssue({
+        code: "custom",
+        path: [tienePct ? "comision_usd" : "comision_pct"],
+        message: "Indique el porcentaje y el monto de comisión",
+      });
+    }
+
     if (factura.condicion === "contado" && factura.dias_credito !== 0) {
       ctx.addIssue({
         code: "custom",
@@ -132,6 +153,7 @@ export const listarFacturasSchema = z
       .enum(["pagada", "vencida", "por_vencer", "pendiente", "todas"], "Filtro inválido")
       .default("todas"),
     busqueda: z.string().trim().max(100, "La búsqueda es demasiado larga").optional(),
+    orden: z.enum(["numero", "reciente"], "Orden inválido").default("numero"),
     pagina: z.coerce.number().int().min(1, "Página inválida").default(1),
     porPagina: z.coerce.number().int().min(1).max(100, "Máximo 100 por página").default(20),
   })
@@ -142,6 +164,19 @@ export const listarFacturasSchema = z
 
 export const obtenerFacturaSchema = z.object({
   id: z.string().uuid("Identificador de factura inválido"),
+});
+
+export const actualizarComisionFacturaSchema = z.object({
+  id: z.string().uuid("Identificador de factura inválido"),
+  comision_pct: z
+    .number()
+    .min(0, "La comisión no puede ser negativa")
+    .max(100, "La comisión no puede superar 100")
+    .refine((v) => montoConDosDecimales(v), "La comisión admite máximo 2 decimales"),
+  comision_usd: z
+    .number()
+    .min(0, "La comisión no puede ser negativa")
+    .refine((v) => montoConDosDecimales(v), "La comisión admite máximo 2 decimales"),
 });
 
 export const resumenVentasSchema = z
@@ -161,6 +196,7 @@ export function calcularTotal(
 export type CrearFacturaInput = z.infer<typeof crearFacturaSchema>;
 export type ListarFacturasInput = z.infer<typeof listarFacturasSchema>;
 export type ObtenerFacturaInput = z.infer<typeof obtenerFacturaSchema>;
+export type ActualizarComisionFacturaInput = z.infer<typeof actualizarComisionFacturaSchema>;
 export type ResumenVentasInput = z.infer<typeof resumenVentasSchema>;
 
 export type FacturaConSaldo = {
@@ -216,6 +252,9 @@ export type FacturaDetalle = {
   fecha_vencimiento: string;
   total_usd: number;
   descuento_usd: number;
+  comision_pct: number;
+  comision_usd: number;
+  comision_pagada: boolean;
   cliente: { id: string; rif: string; nombre_juridico: string };
   items: ItemFactura[];
   pagos: PagoFactura[];

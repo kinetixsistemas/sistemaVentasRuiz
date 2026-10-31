@@ -1,4 +1,5 @@
 import {
+  actualizarComisionFacturaRepo,
   crearFacturaRepo,
   listarFacturasRepo,
   obtenerFacturaConSaldoRepo,
@@ -14,6 +15,7 @@ import {
   type ActionResult,
 } from "@/lib/result";
 import type {
+  ActualizarComisionFacturaInput,
   CrearFacturaInput,
   FacturaConSaldo,
   FacturaDetalle,
@@ -33,6 +35,17 @@ export async function crearFacturaService(
     // Se devuelve la factura creada para reflejarla en la lista sin recargar.
     const factura = await obtenerFacturaConSaldoRepo(facturaId);
     return okResult({ factura });
+  } catch (error) {
+    return fromPostgresError(error);
+  }
+}
+
+export async function actualizarComisionFacturaService(
+  input: ActualizarComisionFacturaInput
+): Promise<ActionResult<{ comision_pct: number; comision_usd: number }>> {
+  try {
+    const comision = await actualizarComisionFacturaRepo(input);
+    return okResult(comision);
   } catch (error) {
     return fromPostgresError(error);
   }

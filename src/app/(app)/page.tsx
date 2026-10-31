@@ -139,7 +139,7 @@ export default async function HomePage() {
   // recientes y 10 cobros. Antes se descargaba todo el histórico y 100 productos.
   const [resumenRes, facturasRes, pagosRes, empresaRes] = await Promise.all([
     resumenCartera(),
-    listarFacturas({ estado: "todas", porPagina: 5 }),
+    listarFacturas({ estado: "todas", porPagina: 5, orden: "reciente" }),
     ultimosPagos(),
     obtenerEmpresaService(),
   ]);

@@ -8,6 +8,7 @@ const ESTADO_ICONO: Record<EstadoFactura, string> = {
   por_vencer: "schedule",
   vencida: "error",
   pendiente: "pending_actions",
+  anulada: "block",
 };
 
 const ESTADO_CLASES: Record<EstadoFactura, string> = {
@@ -15,6 +16,7 @@ const ESTADO_CLASES: Record<EstadoFactura, string> = {
   por_vencer: "bg-status-por-vencer-bg text-status-por-vencer-text",
   vencida: "bg-status-vencida-bg text-status-vencida-text",
   pendiente: "bg-status-pendiente-bg text-status-pendiente-text",
+  anulada: "bg-error-container text-on-error-container",
 };
 
 /** Chip con el color e icono semántico del estado de una factura. */

@@ -3,9 +3,10 @@
 import { updateTag } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { fromZodError, type ActionResult } from "@/lib/result";
-import { TAG_CLIENTES, TAG_COBRANZA, TAG_FACTURAS, TAG_PRODUCTOS } from "@/lib/tags";
-import { crearFacturaService, listarFacturasService, obtenerFacturaDetalleService, resumenCarteraService, resumenVentasPeriodoService } from "./service";
+import { TAG_CLIENTES, TAG_COBRANZA, TAG_FACTURAS, TAG_PRODUCTOS, TAG_VENDEDORES } from "@/lib/tags";
+import { actualizarComisionFacturaService, crearFacturaService, listarFacturasService, obtenerFacturaDetalleService, resumenCarteraService, resumenVentasPeriodoService } from "./service";
 import {
+  actualizarComisionFacturaSchema,
   crearFacturaSchema,
   listarFacturasSchema,
   obtenerFacturaSchema,
@@ -31,6 +32,22 @@ export async function crearFactura(
     updateTag(TAG_PRODUCTOS);
     updateTag(TAG_COBRANZA);
     updateTag(TAG_CLIENTES);
+  }
+  return result;
+}
+
+export async function actualizarComisionFactura(
+  input: unknown
+): Promise<ActionResult<{ comision_pct: number; comision_usd: number }>> {
+  await requireUser();
+  const parsed = actualizarComisionFacturaSchema.safeParse(input);
+  if (!parsed.success)
+    return fromZodError<{ comision_pct: number; comision_usd: number }>(parsed.error);
+
+  const result = await actualizarComisionFacturaService(parsed.data);
+  if (result.ok) {
+    updateTag(TAG_FACTURAS);
+    updateTag(TAG_VENDEDORES);
   }
   return result;
 }

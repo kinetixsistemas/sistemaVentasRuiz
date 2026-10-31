@@ -3,6 +3,7 @@ import { round2 } from "@/lib/currency";
 import { escaparFiltroPostgrest } from "@/lib/postgrest";
 import type { Database } from "@/types/database";
 import type {
+  ActualizarComisionFacturaInput,
   CrearFacturaInput,
   FacturaConSaldo,
   FacturaDetalle,
@@ -76,9 +77,30 @@ export async function crearFacturaRepo(input: CrearFacturaInput): Promise<string
     p_descuento_usd: round2(input.descuento_usd),
     p_modo_manual: input.modo_manual ?? false,
     p_monto_manual_usd: input.modo_manual && input.monto_manual_usd !== undefined ? round2(input.monto_manual_usd) : null,
+    p_comision_pct: input.comision_pct ?? null,
+    p_comision_usd: input.comision_usd ?? null,
   });
   if (error) throw error;
   return data;
+}
+
+export async function actualizarComisionFacturaRepo(
+  input: ActualizarComisionFacturaInput
+): Promise<{ comision_pct: number; comision_usd: number }> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("actualizar_comision_factura", {
+    p_factura_id: input.id,
+    p_comision_pct: input.comision_pct,
+    p_comision_usd: input.comision_usd,
+  });
+  if (error) throw error;
+
+  const fila = data?.[0];
+  if (!fila) throw new Error("No se pudo actualizar la comisión");
+  return {
+    comision_pct: Number(fila.comision_pct),
+    comision_usd: Number(fila.comision_usd),
+  };
 }
 
 export async function listarFacturasRepo(input: ListarFacturasInput): Promise<ListarFacturasResult> {
@@ -99,9 +121,16 @@ export async function listarFacturasRepo(input: ListarFacturasInput): Promise<Li
   }
 
   const desde = (input.pagina - 1) * input.porPagina;
-  const { data, error, count } = await consulta
-    .order("fecha_emision", { ascending: false })
-    .range(desde, desde + input.porPagina - 1);
+  const consultaOrdenada =
+    input.orden === "reciente"
+      ? consulta
+          .order("fecha_emision", { ascending: false })
+          .order("numero_orden", { ascending: false })
+      : consulta
+          .order("numero_orden", { ascending: true })
+          .order("numero_factura", { ascending: true });
+
+  const { data, error, count } = await consultaOrdenada.range(desde, desde + input.porPagina - 1);
 
   if (error) throw error;
   return {
@@ -141,11 +170,11 @@ export async function resumenVentasPeriodoRepo(input: ResumenVentasInput): Promi
 export async function obtenerFacturaDetalleRepo(id: string): Promise<FacturaDetalle> {
   const supabase = await createSupabaseServerClient();
 
-  const [facturaRes, itemsRes, pagosRes] = await Promise.all([
+  const [facturaRes, itemsRes, pagosRes, comisionRes] = await Promise.all([
     supabase
       .from("facturas")
       .select(
-        "id, numero_factura, fecha_emision, condicion, dias_credito, fecha_vencimiento, total_usd, descuento_usd, clientes(id, rif, nombre_juridico)"
+        "id, numero_factura, fecha_emision, condicion, dias_credito, fecha_vencimiento, total_usd, descuento_usd, comision_pct, comision_usd, clientes(id, rif, nombre_juridico)"
       )
       .eq("id", id)
       .single(),
@@ -159,11 +188,17 @@ export async function obtenerFacturaDetalleRepo(id: string): Promise<FacturaDeta
       .select("id, fecha, metodo, monto_original, moneda, tasa_cambio, monto_usd, referencia, correo")
       .eq("factura_id", id)
       .order("fecha", { ascending: false }),
+    supabase
+      .from("comisiones_vendedor")
+      .select("id")
+      .eq("factura_id", id)
+      .maybeSingle(),
   ]);
 
   if (facturaRes.error) throw facturaRes.error;
   if (itemsRes.error) throw itemsRes.error;
   if (pagosRes.error) throw pagosRes.error;
+  if (comisionRes.error) throw comisionRes.error;
 
   const factura = facturaRes.data as unknown as FacturaFila & {
     clientes: { id: string; rif: string; nombre_juridico: string } | null;
@@ -195,6 +230,9 @@ export async function obtenerFacturaDetalleRepo(id: string): Promise<FacturaDeta
     fecha_vencimiento: factura.fecha_vencimiento,
     total_usd: factura.total_usd,
     descuento_usd: factura.descuento_usd,
+    comision_pct: Number(factura.comision_pct ?? 0),
+    comision_usd: Number(factura.comision_usd ?? 0),
+    comision_pagada: Boolean(comisionRes.data),
     cliente: {
       id: factura.clientes.id,
       rif: factura.clientes.rif,

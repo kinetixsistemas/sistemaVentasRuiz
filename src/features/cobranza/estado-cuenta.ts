@@ -84,7 +84,9 @@ export async function obtenerEstadoCuentaRepo(
       .select("nombre_comercial, razon_social, rif, telefono, correo, direccion")
       .eq("id", 1)
       .maybeSingle(),
-    facturasConsulta.order("fecha_emision", { ascending: true }),
+    facturasConsulta
+      .order("numero_orden", { ascending: true })
+      .order("numero_factura", { ascending: true }),
   ]);
 
   if (clienteRes.error) throw clienteRes.error;

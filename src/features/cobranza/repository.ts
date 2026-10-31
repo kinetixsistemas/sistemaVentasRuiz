@@ -132,7 +132,7 @@ export async function procesarPagoAsignadoRepo(
   return data;
 }
 
-/** Lista facturas con saldo, priorizando las más atrasadas. */
+/** Lista facturas con saldo ordenadas por número de factura ascendente. */
 export async function listarSaldoPendienteRepo(
   input: ListarSaldoPendienteInput
 ): Promise<ListarSaldoPendienteResult> {
@@ -151,7 +151,8 @@ export async function listarSaldoPendienteRepo(
 
   const desde = (input.pagina - 1) * input.porPagina;
   const { data, error, count } = await consulta
-    .order("dias_mora", { ascending: false })
+    .order("numero_orden", { ascending: true })
+    .order("numero_factura", { ascending: true })
     .range(desde, desde + input.porPagina - 1);
   if (error) throw error;
 

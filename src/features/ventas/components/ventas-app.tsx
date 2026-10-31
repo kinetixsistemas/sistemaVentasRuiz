@@ -33,6 +33,7 @@ type ItemForm = { producto_id: string; cantidad: string; precio: string; stock: 
 type FiltroEstado = EstadoFactura | "todas";
 type Periodo = { desde: string; hasta: string };
 type DescuentoCampo = { monto: string; pct: string; fuente: "monto" | "pct" };
+type ComisionCampo = { monto: string; pct: string; fuente: "monto" | "pct" };
 
 const ITEM_VACIO: ItemForm = { producto_id: "", cantidad: "1", precio: "", stock: 0 };
 
@@ -137,6 +138,7 @@ export function VentasApp({
   const [diasCredito, setDiasCredito] = useState("7");
   const [items, setItems] = useState<ItemForm[]>([ITEM_VACIO]);
   const [descuento, setDescuento] = useState<DescuentoCampo>({ monto: "", pct: "", fuente: "monto" });
+  const [comision, setComision] = useState<ComisionCampo>({ monto: "", pct: "", fuente: "pct" });
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, startGuardar] = useTransition();
   const [modoManual, setModoManual] = useState(false);
@@ -180,6 +182,28 @@ export function VentasApp({
   const descuentoMonto = numeroDeTexto(descuentoVista.monto);
   const descuentoExcede = descuentoMonto > subtotal + 0.005;
   const totalEstimado = round2(Math.max(0, subtotal - descuentoMonto));
+
+  const comisionVista = useMemo(() => {
+    if (comision.fuente === "pct") {
+      const pct = numeroDeTexto(comision.pct);
+      return {
+        pct: comision.pct,
+        monto:
+          comision.pct.trim() === "" ? "" : String(round2((totalEstimado * pct) / 100)),
+      };
+    }
+    const monto = numeroDeTexto(comision.monto);
+    return {
+      monto: comision.monto,
+      pct:
+        totalEstimado > 0 && comision.monto.trim() !== ""
+          ? String(round2((monto / totalEstimado) * 100))
+          : "",
+    };
+  }, [comision, totalEstimado]);
+
+  const comisionPctNum = numeroDeTexto(comisionVista.pct);
+  const comisionMonto = numeroDeTexto(comisionVista.monto);
 
   const totalFacturasPendiente = facturasLocales.reduce((acc, f) => acc + f.saldo_usd, 0);
   const facturasAbiertas = resumen?.facturas_abiertas ?? facturasLocales.filter((f) => f.saldo_usd > 0).length;
@@ -303,15 +327,17 @@ export function VentasApp({
         descuento_usd: descuentoMonto,
         modo_manual: modoManual,
         monto_manual_usd: modoManual ? montoManualNum : undefined,
+        comision_pct: comisionVista.pct.trim() === "" ? undefined : comisionPctNum,
+        comision_usd: comisionVista.monto.trim() === "" ? undefined : comisionMonto,
         items: modoManual
           ? []
           : items
-              .filter((i) => i.producto_id && Number(i.cantidad) > 0)
-              .map((i) => ({
-                producto_id: i.producto_id,
-                cantidad: Number(i.cantidad),
-                precio_unitario_usd: Number(i.precio),
-              })),
+            .filter((i) => i.producto_id && Number(i.cantidad) > 0)
+            .map((i) => ({
+              producto_id: i.producto_id,
+              cantidad: Number(i.cantidad),
+              precio_unitario_usd: Number(i.precio),
+            })),
       });
 
       if (!res.ok) {
@@ -326,6 +352,7 @@ export function VentasApp({
       setDiasCredito("7");
       setItems([ITEM_VACIO]);
       setDescuento({ monto: "", pct: "", fuente: "monto" });
+      setComision({ monto: "", pct: "", fuente: "pct" });
       setModoManual(false);
       setMontoManual("");
       toast.success("Factura creada y stock descontado");
@@ -597,7 +624,7 @@ export function VentasApp({
                 type="button"
                 variant={modoManual ? "primary" : "secondary"}
                 size="sm"
-                style={modoManual ? { backgroundColor: "#f97316", color: "#fff" } : undefined}
+                style={modoManual ? { backgroundColor: "#f97316", color: "#ffffff" } : undefined}
                 className={modoManual ? "hover:opacity-90" : ""}
                 onClick={() => {
                   setModoManual((v) => {
@@ -718,6 +745,54 @@ export function VentasApp({
               aria-label="Descuento en porcentaje"
             />
           </div>
+
+          <fieldset>
+            <legend className="text-label-md text-on-surface-variant">Comisión del vendedor</legend>
+            <p className="mt-1 text-body-sm text-on-surface-variant">
+              Opcional. Si se deja vacío se usa el porcentaje configurado del vendedor.
+            </p>
+            <div className="mt-2 grid gap-4 sm:grid-cols-2">
+
+              <Input
+                label="Comisión ($)"
+                name="comision_usd"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="0,00"
+                value={comisionVista.monto}
+                onChange={(e) =>
+                  setComision({
+                    pct: "",
+                    monto: e.target.value.replace(/[^0-9.,]/g, ""),
+                    fuente: "monto",
+                  })
+                }
+                error={errores.comision_usd}
+                aria-label="Comisión en dólares"
+              />
+
+              <Input
+                label="Comisión (%)"
+                name="comision_pct"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="0"
+                value={comisionVista.pct}
+                onChange={(e) =>
+                  setComision({
+                    pct: e.target.value.replace(/[^0-9.,]/g, ""),
+                    monto: "",
+                    fuente: "pct",
+                  })
+                }
+                error={errores.comision_pct}
+                aria-label="Comisión en porcentaje"
+              />
+            </div>
+          </fieldset>
+
           {descuentoExcede && (
             <InlineAlert>El descuento no puede superar el subtotal de la factura.</InlineAlert>
           )}

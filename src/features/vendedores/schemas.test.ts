@@ -138,16 +138,15 @@ describe("historialVendedorSchema", () => {
 });
 
 describe("pagarComisionVendedorSchema", () => {
-  it("acepta un pago en efectivo válido", () => {
+  it("acepta un pago en efectivo válido sin porcentaje manual", () => {
     const parsed = pagarComisionVendedorSchema.parse({
       factura_id: "8f4d2c1a-1111-4222-8333-123456789abc",
-      comision_pct: "5,5",
       metodo: "efectivo",
       monto: "5.25",
     });
 
-    expect(parsed.comision_pct).toBe(5.5);
     expect(parsed.metodo).toBe("efectivo");
+    expect(parsed.monto).toBe(5.25);
   });
 
   it("exige tasa y referencia para pagos en bolívares", () => {
@@ -156,7 +155,6 @@ describe("pagarComisionVendedorSchema", () => {
     expect(
       pagarComisionVendedorSchema.safeParse({
         factura_id,
-        comision_pct: 5,
         metodo: "bs",
         monto: 100,
       }).success
@@ -164,7 +162,6 @@ describe("pagarComisionVendedorSchema", () => {
     expect(
       pagarComisionVendedorSchema.safeParse({
         factura_id,
-        comision_pct: 5,
         metodo: "bs",
         monto: 100,
         tasa_cambio: 50,
@@ -179,7 +176,6 @@ describe("pagarComisionVendedorSchema", () => {
     expect(
       pagarComisionVendedorSchema.safeParse({
         factura_id,
-        comision_pct: 5,
         metodo: "zelle",
         monto: 5,
       }).success
@@ -187,7 +183,6 @@ describe("pagarComisionVendedorSchema", () => {
     expect(
       pagarComisionVendedorSchema.safeParse({
         factura_id,
-        comision_pct: 5,
         metodo: "zelle",
         monto: 5,
         correo: "test@test.com",
@@ -196,13 +191,12 @@ describe("pagarComisionVendedorSchema", () => {
     ).toBe(true);
   });
 
-  it("rechaza facturas inválidas y porcentajes fuera de rango", () => {
+  it("rechaza facturas inválidas y montos no positivos", () => {
     const factura_id = "8f4d2c1a-1111-4222-8333-123456789abc";
 
     expect(
       pagarComisionVendedorSchema.safeParse({
         factura_id: "factura",
-        comision_pct: 5,
         metodo: "efectivo",
         monto: 1,
       }).success
@@ -210,17 +204,8 @@ describe("pagarComisionVendedorSchema", () => {
     expect(
       pagarComisionVendedorSchema.safeParse({
         factura_id,
-        comision_pct: 100.01,
         metodo: "efectivo",
-        monto: 1,
-      }).success
-    ).toBe(false);
-    expect(
-      pagarComisionVendedorSchema.safeParse({
-        factura_id,
-        comision_pct: 5.555,
-        metodo: "efectivo",
-        monto: 1,
+        monto: 0,
       }).success
     ).toBe(false);
   });

@@ -21,7 +21,7 @@ type VistaFila = Database["public"]["Views"]["facturas_con_saldo"]["Row"];
 const COLUMNAS = "id, nombre, comision_pct, activo, created_at, updated_at";
 
 const COLUMNAS_HISTORIAL =
-  "id, numero_factura, nombre_juridico, fecha_emision, fecha_vencimiento, total_usd, total_pagado_usd, saldo_usd, estado, dias_mora";
+  "id, numero_factura, nombre_juridico, fecha_emision, fecha_vencimiento, total_usd, total_pagado_usd, saldo_usd, estado, dias_mora, comision_pct, comision_usd";
 
 const COLUMNAS_COMISION =
   "id, factura_id, vendedor_id, base_usd, comision_pct, monto_usd, pagada_at, fecha, metodo, moneda, monto_original, tasa_cambio, referencia, correo";
@@ -38,6 +38,8 @@ type HistorialFila = Pick<
   | "saldo_usd"
   | "estado"
   | "dias_mora"
+  | "comision_pct"
+  | "comision_usd"
 >;
 
 function numero(valor: number | string | null | undefined): number {
@@ -116,6 +118,8 @@ function mapearFacturaVendedor(
     saldo_usd: numero(fila.saldo_usd),
     estado: fila.estado,
     dias_mora: numero(fila.dias_mora),
+    comision_pct: numero(fila.comision_pct),
+    comision_usd: numero(fila.comision_usd),
     comision: comision ?? null,
   };
 }
@@ -190,7 +194,6 @@ export async function pagarComisionVendedorRepo(
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc("pagar_comision_vendedor", {
     p_factura_id: input.factura_id,
-    p_comision_pct: input.comision_pct,
     p_metodo: input.metodo,
     p_monto: input.monto,
     p_tasa: input.tasa_cambio ?? null,

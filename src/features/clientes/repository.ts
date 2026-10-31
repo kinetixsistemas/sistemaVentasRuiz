@@ -9,6 +9,8 @@ import type {
 } from "./schemas";
 
 type ClienteFila = Database["public"]["Tables"]["clientes"]["Row"];
+type ClienteInsert = Database["public"]["Tables"]["clientes"]["Insert"];
+type ClienteUpdate = Database["public"]["Tables"]["clientes"]["Update"];
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
 
 /** Saldo que la app considera ya cancelado (misma tolerancia que cobranza). */
@@ -110,8 +112,7 @@ export async function obtenerClienteRepo(id: string): Promise<Cliente> {
 
 export async function crearClienteRepo(input: CrearClienteInput): Promise<Cliente> {
   const supabase = await createSupabaseServerClient();
-  const payload: any = { ...(input as any) };
-  payload.correo = payload.correo ?? null;
+  const payload: ClienteInsert = { ...input, correo: input.correo ?? null };
   const { data, error } = await supabase
     .from("clientes")
     .insert(payload)
@@ -124,16 +125,13 @@ export async function crearClienteRepo(input: CrearClienteInput): Promise<Client
 export async function actualizarClienteRepo(input: ActualizarClienteInput): Promise<Cliente> {
   const supabase = await createSupabaseServerClient();
   const { id, ...resto } = input;
-  const restoAny = resto as any;
-  const payload: any = { ...restoAny };
+  const payload: ClienteUpdate = { ...resto };
   if ("correo" in payload) {
     const c = payload.correo;
     if (c === undefined) {
       delete payload.correo;
     } else if (c === null || c === "") {
       payload.correo = null;
-    } else {
-      payload.correo = c;
     }
   }
   const { data, error } = await supabase
